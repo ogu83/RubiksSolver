@@ -8,6 +8,13 @@ enum Rotation { U, D, R, L, UI, DI, RI, LI };
 
 class Cube {
 public:
+	/// <summary>
+	/// Constructor of The Cube
+	/// </summary>
+	/// <param name="initialColor">Initial Color</param>
+	/// <param name="cRow">Row Count For Each Face</param>
+	/// <param name="cCol">Col Count For Each Face</param>
+	/// <param name="cFace">Face Count</param>
 	Cube(Color initialColor, int cRow, int cCol, int cFace)
 		: _cRow(cRow), _cCol(cCol), _cFace(cFace),
 		_matrix(cFace, std::vector<std::vector<Color>>(cCol, std::vector<Color>(cRow, initialColor))) {
@@ -15,7 +22,9 @@ public:
 		setColorsToInitState();
 	}
 
-	//goto init state
+	/// <summary>
+	/// Goto init state
+	/// </summary>
 	void setColorsToInitState() {
 		_rotations.clear();
 		setColor(FRONT, BLUE);
@@ -26,13 +35,21 @@ public:
 		setColor(LEFT, ORANGE);
 	}
 
-	//make a rotation
+	/// <summary>
+	/// Make a rotation
+	/// </summary>
+	/// <param name="r">Rotation</param>
 	virtual void applyRotation(Rotation r) {
 		_rotations.push_back(r);
 	}
 
-	// Utility to print the cube's configuration
+	/// <summary>
+	/// Utility to print the cube's configuration
+	/// </summary>
+	/// <param name="shortPrint"></param>
 	void printCube(bool shortPrint = false) {
+		std::string solvedStr = isSolved() ? "YES" : "NO";
+		std::cout << "Solved: " << solvedStr << std::endl;
 		std::cout << "Rotations: " << rotationsToString() << std::endl;
 		if (shortPrint) {
 			for (int f = 0; f < _cFace / 2; ++f) {
@@ -59,16 +76,119 @@ public:
 		}
 	}
 
+	/// <summary>
+	/// Check if tich cube is solved or not
+	/// </summary>
+	/// <returns>Solved or Not</returns>
+	bool isSolved() const {
+		for (const auto& face : _matrix) {
+			Color firstColor = face[0][0];
+			for (const auto& row : face) {
+				for (Color color : row) {
+					if (color != firstColor) {
+						return false;
+					}
+				}
+			}
+		}
+		return true;
+	}
+
+	/// <summary>
+	/// Apply A solution to this cube
+	/// </summary>
+	/// <param name="solution">A solution array from rotations enum elements</param>
+	void applySolution(const std::vector<Rotation>& solution) {
+		for (Rotation move : solution) {
+			applyRotation(move);
+		}
+	}
+
+	/// <summary>
+	/// Clone the cube
+	/// </summary>
+	/// <returns>The Cube</returns>
+	virtual Cube* copy() const {
+		return new Cube(WHITE, _cRow, _cCol, _cFace); // Return a new Cube allocated with new
+	}
+
+	/// <summary>
+	/// Depth First Search For Solve The Cube
+	/// </summary>
+	/// <param name="depth">Depth</param>
+	/// <param name="begin_time">Start Time</param>
+	virtual void dfs(int depth = 1, const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
+		if (isSolved()) {
+			return;
+		}
+
+		static const std::vector<Rotation> allRotations = { U, D, R, L, UI, DI, RI, LI };
+		std::vector<Rotation> currentPath;
+		std::vector<std::vector<Rotation>> potentialSolutions;
+
+		// Generate all combinations of moves up to the given depth
+		generateCombinations(allRotations, depth, currentPath, potentialSolutions);
+
+		auto startTime = std::chrono::steady_clock::now();
+
+		for (const auto& solution : potentialSolutions) {
+			std::unique_ptr<Cube> testCube(copy());  // Use smart pointers to manage memory
+			testCube->applySolution(solution);
+			
+			//testCube->printCube(true);
+			
+			if (testCube->isSolved()) {
+				auto endTime = std::chrono::steady_clock::now();
+				std::chrono::duration<double> timeTaken = endTime - begin_time;
+
+				std::cout << "Solved in " << timeTaken.count() << " seconds\n";
+				std::cout << "Solution: ";
+				for (Rotation move : solution) {
+					std::cout << rotationToString(move) << " ";
+				}
+				std::cout << "\n";
+				return;
+			}
+		}
+
+		std::cout << "Increasing depth to " << depth + 1 << " and continuing search...\n";
+		dfs(depth + 1, begin_time);
+	}
+
 protected:
+
 	int _cRow;
 	int _cCol;
 	int _cFace;
+
 	std::vector<std::vector<std::vector<Color>>> _matrix;
 	std::vector<Rotation> _rotations;
 
+	/// <summary>
+	/// Rotate One face of the Cube
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="clockwise">ClockWise or Counter Clock Wise</param>
 	virtual void rotateFace(Faces face, bool clockwise) { };
 
-	// Function to set the color of the face
+	void generateCombinations(const std::vector<Rotation>& allRotations, int depth, std::vector<Rotation>& currentPath, std::vector<std::vector<Rotation>>& results) {
+		if (depth == 0) {
+			results.push_back(currentPath);
+			return;
+		}
+
+		for (Rotation r : allRotations) {
+			currentPath.push_back(r);
+			generateCombinations(allRotations, depth - 1, currentPath, results);
+			currentPath.pop_back();
+		}
+	}
+
+	/// <summary>
+	/// Function to set the color of the face
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="color">Color</param>
 	void setColor(Faces face, Color color) {
 		for (int r = 0; r < _cRow; r++) {
 			for (int c = 0; c < _cCol; c++) {
@@ -77,7 +197,13 @@ protected:
 		}
 	}
 
-	// Function to set the color of a specific cell
+	/// <summary>
+	/// Function to set the color of a specific cell
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="row">Row</param>
+	/// <param name="col">Column</param>
+	/// <param name="color">Color</param>
 	void setColor(Faces face, int row, int col, Color color) {
 		if (row >= 0 && row < _cRow && col >= 0 && col < _cCol) {
 			_matrix[face][row][col] = color;
@@ -87,7 +213,14 @@ protected:
 		}
 	}
 
-	// Function to get the color of a specific cell
+	/// <summary>
+	/// Function to get the color of a specific cell
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="row">Row</param>
+	/// <param name="col">Column</param>
+	/// <param name="color">Color</param>
+	/// <returns>Color</returns>
 	Color getColor(Faces face, int row, int col) const {
 		if (row >= 0 && row < _cRow && col >= 0 && col < _cCol) {
 			return _matrix[face][row][col];
@@ -98,7 +231,10 @@ protected:
 		}
 	}
 
-	// Convert Rotations Log to string
+	/// <summary>
+	/// Convert Rotations Log to string
+	/// </summary>
+	/// <returns>Rotation String</returns>
 	std::string rotationsToString() {
 		std::string retVal = "";
 		for (Rotation r : _rotations) {
@@ -107,7 +243,11 @@ protected:
 		return retVal;
 	}
 
-	// Convert Rotation enum to string
+	/// <summary>
+	/// Convert Rotation enum to string
+	/// </summary>
+	/// <param name="r">Rotation</param>
+	/// <returns>String On the Rotation in the Enum</returns>
 	std::string rotationToString(Rotation r) {
 		switch (r)
 		{
@@ -123,7 +263,12 @@ protected:
 		}
 	}
 
-	// Convert Color enum to string
+	/// <summary>
+	/// Convert Color enum to string
+	/// </summary>
+	/// <param name="color">Color</param>
+	/// <param name="shortPrint">Short Print: For Small Console Output</param>
+	/// <returns>String Of the Color Enum</returns>
 	std::string colorToString(Color color, bool shortPrint = false) {
 		if (shortPrint) {
 			switch (color) {
@@ -149,7 +294,12 @@ protected:
 		}
 	}
 
-	// Convert Faces enum to string
+	/// <summary>
+	/// Convert Faces enum to string
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="shortPrint">Short Print: For Small Console Output</param>
+	/// <returns>String Of the Faces Enum</returns>
 	std::string faceToString(Faces face, bool shortPrint = false) {
 		if (shortPrint) {
 			switch (face) {
@@ -178,12 +328,35 @@ protected:
 
 class Cube222 : public Cube {
 public:
+
+	/// <summary>
+	/// Constructor of The Cube 2x2x2
+	/// </summary>
+	/// <param name="initialColor">Initial Color</param>
+	/// <param name="cRow">Row Count For Each Face</param>
+	/// <param name="cCol">Col Count For Each Face</param>
+	/// <param name="cFace">Face Count</param>
 	Cube222(Color initialColor = Color::WHITE, int cRow = 2, int cCol = 2, int cFace = 6) :
 		Cube(initialColor, cRow, cCol, cFace) {
 	}
 
-	void applyRotation(Rotation r) {
-		Cube::applyRotation(r);
+	//Cube copy() const override {
+	//	Cube222 newCube(*this);  // Create a copy of this cube
+	//	newCube._matrix = _matrix;  // Copy the matrix explicitly if needed
+	//	return newCube;
+	//}
+
+	Cube* copy() const override {
+		Cube222* newCube = new Cube222(*this);  // Dynamically allocate a new Cube222
+		newCube->_matrix = this->_matrix;       // Explicitly copy the matrix
+		return newCube;                         // Return as a pointer to Cube
+	}
+
+	/// <summary>
+	/// Make a rotation
+	/// </summary>
+	/// <param name="r">Rotation</param>
+	void applyRotation(Rotation r) override {
 		std::vector<Color> tempRow;
 		std::vector<Color> tempColumn(_cCol);
 		if (r == U || r == UI) {
@@ -273,10 +446,17 @@ public:
 				}
 			}
 		}
+
+		Cube::applyRotation(r);
 	}
 
 protected:
-	void rotateFace(Faces face, bool clockwise) {
+	/// <summary>
+	/// Rotate One face of the Cube
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="clockwise">ClockWise or Counter Clock Wise</param>
+	void rotateFace(Faces face, bool clockwise) override {
 		if (clockwise) {
 			// Rotate face 90 degrees clockwise
 			Color temp = _matrix[face][0][0];
@@ -293,6 +473,8 @@ protected:
 			_matrix[face][1][1] = _matrix[face][1][0];
 			_matrix[face][1][0] = temp;
 		}
+
+		Cube::rotateFace(face, clockwise);
 	}
 };
 
@@ -301,6 +483,17 @@ int main() {
 	std::cout << "2x2x2 Cube:" << std::endl;
 	cube.applyRotation(R);
 	cube.applyRotation(U);
+	cube.applyRotation(R);
+	cube.applyRotation(D);
+	cube.applyRotation(D);
+	cube.applyRotation(LI);
+	cube.applyRotation(R);
+	cube.applyRotation(U);
+	cube.applyRotation(R);
+	cube.applyRotation(D);
+	cube.applyRotation(D);
+	cube.applyRotation(LI);
 	cube.printCube(true);
+	cube.dfs();
 	return 0;
 };
