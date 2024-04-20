@@ -5,4 +5,7 @@
 
 #include <iostream>
 
+#include <vector>
+#include <array>
+
 // TODO: Reference additional headers your program requires here.
