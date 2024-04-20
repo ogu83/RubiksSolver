@@ -2,9 +2,17 @@
 
 using namespace std;
 
-enum Color { RED, BLUE, ORANGE, GREEN, WHITE, YELLOW };
-enum Faces { TOP, FRONT, RIGHT, BOTTOM, BACK, LEFT };
+enum Color { RED, BLUE, ORANGE, GREEN, WHITE, YELLOW, UNDEFINED };
+enum Faces { TOP, FRONT, RIGHT, BOTTOM, BACK, LEFT, NONE };
 enum Rotation { U, D, R, L, UI, DI, RI, LI };
+
+std::map<char, Color> charToColor = {
+	{'R', RED}, {'B', BLUE}, {'O', ORANGE}, {'G', GREEN}, {'W', WHITE}, {'Y', YELLOW}
+};
+
+std::map<std::string, Faces> tagToFace = {
+	{"-ft", TOP}, {"-ff", FRONT}, {"-fr", RIGHT}, {"-fb", BOTTOM}, {"-fbk", BACK}, {"-fl", LEFT}
+};
 
 class Cube {
 public:
@@ -33,6 +41,69 @@ public:
 		setColor(BOTTOM, WHITE);
 		setColor(BACK, GREEN);
 		setColor(LEFT, ORANGE);
+	}
+
+	/// <summary>
+	/// Function to set the colors of the face
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="colors">Colors</param>
+	void setColor(Faces face, const std::vector<Color>& colors) {
+		for (int i = 0; i < _cRow; ++i) {
+			for (int j = 0; j < _cCol; ++j) {
+				int idx = i * _cCol + j;  // Flatten the row/col to index
+				if (idx < colors.size()) {
+					_matrix[face][i][j] = colors[idx];
+				}
+			}
+		}
+	}
+
+	/// <summary>
+	/// Function to set the color of the face
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="color">Color</param>
+	void setColor(Faces face, Color color) {
+		for (int r = 0; r < _cRow; r++) {
+			for (int c = 0; c < _cCol; c++) {
+				setColor(face, r, c, color);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Function to set the color of a specific cell
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="row">Row</param>
+	/// <param name="col">Column</param>
+	/// <param name="color">Color</param>
+	void setColor(Faces face, int row, int col, Color color) {
+		if (row >= 0 && row < _cRow && col >= 0 && col < _cCol) {
+			_matrix[face][row][col] = color;
+		}
+		else {
+			std::cerr << "Index out of bounds error." << std::endl;
+		}
+	}
+
+	/// <summary>
+	/// Function to get the color of a specific cell
+	/// </summary>
+	/// <param name="face">Face</param>
+	/// <param name="row">Row</param>
+	/// <param name="col">Column</param>
+	/// <param name="color">Color</param>
+	/// <returns>Color</returns>
+	Color getColor(Faces face, int row, int col) const {
+		if (row >= 0 && row < _cRow && col >= 0 && col < _cCol) {
+			return _matrix[face][row][col];
+		}
+		else {
+			std::cerr << "Index out of bounds error." << std::endl;
+			return Color::WHITE;  // Default return
+		}
 	}
 
 	/// <summary>
@@ -186,53 +257,8 @@ protected:
 			currentPath.pop_back();
 		}
 	}
-
-	/// <summary>
-	/// Function to set the color of the face
-	/// </summary>
-	/// <param name="face">Face</param>
-	/// <param name="color">Color</param>
-	void setColor(Faces face, Color color) {
-		for (int r = 0; r < _cRow; r++) {
-			for (int c = 0; c < _cCol; c++) {
-				setColor(face, r, c, color);
-			}
-		}
-	}
-
-	/// <summary>
-	/// Function to set the color of a specific cell
-	/// </summary>
-	/// <param name="face">Face</param>
-	/// <param name="row">Row</param>
-	/// <param name="col">Column</param>
-	/// <param name="color">Color</param>
-	void setColor(Faces face, int row, int col, Color color) {
-		if (row >= 0 && row < _cRow && col >= 0 && col < _cCol) {
-			_matrix[face][row][col] = color;
-		}
-		else {
-			std::cerr << "Index out of bounds error." << std::endl;
-		}
-	}
-
-	/// <summary>
-	/// Function to get the color of a specific cell
-	/// </summary>
-	/// <param name="face">Face</param>
-	/// <param name="row">Row</param>
-	/// <param name="col">Column</param>
-	/// <param name="color">Color</param>
-	/// <returns>Color</returns>
-	Color getColor(Faces face, int row, int col) const {
-		if (row >= 0 && row < _cRow && col >= 0 && col < _cCol) {
-			return _matrix[face][row][col];
-		}
-		else {
-			std::cerr << "Index out of bounds error." << std::endl;
-			return Color::WHITE;  // Default return
-		}
-	}
+	
+	
 
 	/// <summary>
 	/// Convert Rotations Log to string
@@ -360,98 +386,89 @@ public:
 	/// </summary>
 	/// <param name="r">Rotation</param>
 	void applyRotation(Rotation r) override {
-		std::vector<Color> tempRow;
-		std::vector<Color> tempColumn(_cCol);
+		// Allocate temporary storage for one row or one column since cube is 2x2
+		std::array<Color, 2> tempStorage;
+
 		if (r == U || r == UI) {
-			// Rotate the top face
 			rotateFace(TOP, r == U);
-			// Cycle the top rows
-			tempRow = _matrix[FRONT][0]; // Copy front top row
-			if (r == U) { // Clockwise
-				_matrix[FRONT][0] = _matrix[RIGHT][0];
-				_matrix[RIGHT][0] = _matrix[BACK][0];
-				_matrix[BACK][0] = _matrix[LEFT][0];
-				_matrix[LEFT][0] = tempRow;
+			if (r == U) {  // Clockwise
+				std::swap_ranges(_matrix[FRONT][0].begin(), _matrix[FRONT][0].end(), _matrix[RIGHT][0].begin());
+				std::swap_ranges(_matrix[RIGHT][0].begin(), _matrix[RIGHT][0].end(), _matrix[BACK][0].begin());
+				std::swap_ranges(_matrix[BACK][0].begin(), _matrix[BACK][0].end(), _matrix[LEFT][0].begin());
+				std::swap_ranges(_matrix[LEFT][0].begin(), _matrix[LEFT][0].end(), _matrix[FRONT][0].begin());
 			}
-			else { // Counter-clockwise (UI)
-				_matrix[FRONT][0] = _matrix[LEFT][0];
-				_matrix[LEFT][0] = _matrix[BACK][0];
-				_matrix[BACK][0] = _matrix[RIGHT][0];
-				_matrix[RIGHT][0] = tempRow;
+			else {  // Counter-clockwise (UI)
+				std::swap_ranges(_matrix[FRONT][0].begin(), _matrix[FRONT][0].end(), _matrix[LEFT][0].begin());
+				std::swap_ranges(_matrix[LEFT][0].begin(), _matrix[LEFT][0].end(), _matrix[BACK][0].begin());
+				std::swap_ranges(_matrix[BACK][0].begin(), _matrix[BACK][0].end(), _matrix[RIGHT][0].begin());
+				std::swap_ranges(_matrix[RIGHT][0].begin(), _matrix[RIGHT][0].end(), _matrix[FRONT][0].begin());
 			}
 		}
 		else if (r == D || r == DI) {
-			// Rotate the bottom face
 			rotateFace(BOTTOM, r == D);
-			// Cycle te bottom rows
-			tempRow = _matrix[FRONT][1]; // Copy front down row
-			if (r == D) { // Clockwise
-				_matrix[FRONT][1] = _matrix[RIGHT][1];
-				_matrix[RIGHT][1] = _matrix[BACK][1];
-				_matrix[BACK][1] = _matrix[LEFT][1];
-				_matrix[LEFT][1] = tempRow;
+			if (r == D) {  // Clockwise
+				std::swap_ranges(_matrix[FRONT][1].begin(), _matrix[FRONT][1].end(), _matrix[RIGHT][1].begin());
+				std::swap_ranges(_matrix[RIGHT][1].begin(), _matrix[RIGHT][1].end(), _matrix[BACK][1].begin());
+				std::swap_ranges(_matrix[BACK][1].begin(), _matrix[BACK][1].end(), _matrix[LEFT][1].begin());
+				std::swap_ranges(_matrix[LEFT][1].begin(), _matrix[LEFT][1].end(), _matrix[FRONT][1].begin());
 			}
-			else { // Counter-clockwise
-				_matrix[FRONT][1] = _matrix[LEFT][1];
-				_matrix[LEFT][1] = _matrix[BACK][1];
-				_matrix[BACK][1] = _matrix[RIGHT][1];
-				_matrix[RIGHT][1] = tempRow;
+			else {  // Counter-clockwise (DI)
+				std::swap_ranges(_matrix[FRONT][1].begin(), _matrix[FRONT][1].end(), _matrix[LEFT][1].begin());
+				std::swap_ranges(_matrix[LEFT][1].begin(), _matrix[LEFT][1].end(), _matrix[BACK][1].begin());
+				std::swap_ranges(_matrix[BACK][1].begin(), _matrix[BACK][1].end(), _matrix[RIGHT][1].begin());
+				std::swap_ranges(_matrix[RIGHT][1].begin(), _matrix[RIGHT][1].end(), _matrix[FRONT][1].begin());
 			}
 		}
 		else if (r == L || r == LI) {
-			// Rotate the left face
 			rotateFace(LEFT, r == L);
-			// Cycling the columns for L or LI rotation
-			for (int i = 0; i < _cCol; i++) {  // Since it's a 2x2 cube
-				tempColumn[i] = _matrix[TOP][i][0];  // Store the left column of the top face
+			for (int i = 0; i < _cCol; i++) {
+				tempStorage[i] = _matrix[TOP][i][0];  // Store the left column of the top face
 			}
 
 			if (r == L) { // Clockwise
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][0] = _matrix[BACK][1 - i][1];  // Back to top, flipped vertically
-					_matrix[BACK][1 - i][1] = _matrix[BOTTOM][i][0];  // Bottom to back, flipped vertically
-					_matrix[BOTTOM][i][0] = _matrix[FRONT][i][0];  // Front to bottom
-					_matrix[FRONT][i][0] = tempColumn[i];  // Top to front
+					std::swap(_matrix[TOP][i][0], _matrix[BACK][1 - i][1]);
+					std::swap(_matrix[BACK][1 - i][1], _matrix[BOTTOM][i][0]);
+					std::swap(_matrix[BOTTOM][i][0], _matrix[FRONT][i][0]);
+					_matrix[FRONT][i][0] = tempStorage[i];
 				}
 			}
-			else { // Counter-clockwise
+			else { // Counter-clockwise (LI)
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][0] = _matrix[FRONT][i][0];  // Front to top
-					_matrix[FRONT][i][0] = _matrix[BOTTOM][i][0];  // Bottom to front
-					_matrix[BOTTOM][i][0] = _matrix[BACK][1 - i][1];  // Back to bottom, flipped vertically
-					_matrix[BACK][1 - i][1] = tempColumn[i];  // Top to back, flipped vertically
+					std::swap(_matrix[TOP][i][0], _matrix[FRONT][i][0]);
+					std::swap(_matrix[FRONT][i][0], _matrix[BOTTOM][i][0]);
+					std::swap(_matrix[BOTTOM][i][0], _matrix[BACK][1 - i][1]);
+					_matrix[BACK][1 - i][1] = tempStorage[i];
 				}
 			}
 		}
 		else if (r == R || r == RI) {
-			// Rotate the right face
 			rotateFace(RIGHT, r == R);
-
-			// Cycling the columns for R or RI rotation
 			for (int i = 0; i < _cCol; i++) {
-				tempColumn[i] = _matrix[TOP][i][1];  // Store the right column of the top face
+				tempStorage[i] = _matrix[TOP][i][1];  // Store the right column of the top face
 			}
 
 			if (r == R) { // Clockwise
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][1] = _matrix[FRONT][i][1];  // Front to top
-					_matrix[FRONT][i][1] = _matrix[BOTTOM][i][1];  // Bottom to front
-					_matrix[BOTTOM][i][1] = _matrix[BACK][1 - i][0];  // Back (flipped vertically) to bottom
-					_matrix[BACK][1 - i][0] = tempColumn[i];  // Top to back (flipped vertically)
+					std::swap(_matrix[TOP][i][1], _matrix[FRONT][i][1]);
+					std::swap(_matrix[FRONT][i][1], _matrix[BOTTOM][i][1]);
+					std::swap(_matrix[BOTTOM][i][1], _matrix[BACK][1 - i][0]);
+					_matrix[BACK][1 - i][0] = tempStorage[i];
 				}
 			}
 			else { // Counter-clockwise (RI)
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][1] = _matrix[BACK][1 - i][0];  // Back (flipped vertically) to top
-					_matrix[BACK][1 - i][0] = _matrix[BOTTOM][i][1];  // Bottom to back (flipped vertically)
-					_matrix[BOTTOM][i][1] = _matrix[FRONT][i][1];  // Front to bottom
-					_matrix[FRONT][i][1] = tempColumn[i];  // Top to front
+					std::swap(_matrix[TOP][i][1], _matrix[BACK][1 - i][0]);
+					std::swap(_matrix[BACK][1 - i][0], _matrix[BOTTOM][i][1]);
+					std::swap(_matrix[BOTTOM][i][1], _matrix[FRONT][i][1]);
+					_matrix[FRONT][i][1] = tempStorage[i];
 				}
 			}
 		}
 
-		Cube::applyRotation(r);
+		Cube::applyRotation(r);  // Logging rotation
 	}
+
 
 protected:
 	/// <summary>
@@ -481,21 +498,30 @@ protected:
 	}
 };
 
-int main() {
+int main(int argc, char* argv[]) {
 	Cube222 cube;
+	//cube.applyRotation(R);
+
+	for (int i = 1; i < argc; i += 2) {
+		if (i + 1 < argc) {
+			std::string tag = argv[i];
+			std::string values = argv[i + 1];
+			std::vector<Color> colors;
+
+			// Convert string of colors to vector of Color enums
+			std::transform(values.begin(), values.end(), std::back_inserter(colors),
+				[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
+
+			if (tagToFace.count(tag) > 0) {
+				cube.setColor(tagToFace[tag], colors);
+			}
+			else {
+				std::cout << "Invalid face tag: " << tag << std::endl;
+			}
+		}
+	}
+
 	std::cout << "2x2x2 Cube:" << std::endl;
-	cube.applyRotation(R);
-	cube.applyRotation(U);
-	cube.applyRotation(R);
-	cube.applyRotation(D);
-	cube.applyRotation(D);
-	cube.applyRotation(LI);
-	cube.applyRotation(R);
-	cube.applyRotation(U);
-	cube.applyRotation(R);
-	cube.applyRotation(D);
-	cube.applyRotation(D);
-	cube.applyRotation(LI);
 	cube.printCube(true);
 	cube.dfs();
 	return 0;
