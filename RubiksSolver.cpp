@@ -34,13 +34,22 @@ public:
 	/// Goto init state
 	/// </summary>
 	void setColorsToInitState() {
-		_rotations.clear();
 		setColor(FRONT, BLUE);
 		setColor(RIGHT, RED);
 		setColor(TOP, YELLOW);
 		setColor(BOTTOM, WHITE);
 		setColor(BACK, GREEN);
 		setColor(LEFT, ORANGE);
+		_rotations.clear();
+	}
+
+	void saveInitState() {
+		_initMatrix = _matrix;
+	}
+
+	void reset() {
+		_matrix = _initMatrix;
+		_rotations.clear();
 	}
 
 	/// <summary>
@@ -203,18 +212,16 @@ public:
 		std::chrono::duration<double> timeTaken = endTime - begin_time;
 
 		for (const auto& solution : potentialSolutions) {
-			std::unique_ptr<Cube> testCube(copy());  // Use smart pointers to manage memory
-			testCube->applySolution(solution);
-			
+			//std::unique_ptr<Cube> testCube(copy());  // Use smart pointers to manage memory
+			//testCube->applySolution(solution);
 			//std::cout << "Testing: ";
 			//for (Rotation move : solution) {
 			//	std::cout << rotationToString(move) << " ";
 			//}
 			//std::cout << "\n";
-
 			//testCube->printCube(true);
-
-			if (testCube->isSolved()) {
+			applySolution(solution);
+			if (isSolved()) {
 				std::cout << "Solved in " << timeTaken.count() << " seconds\n";
 				std::cout << "Solution: ";
 				for (Rotation move : solution) {
@@ -223,6 +230,7 @@ public:
 				std::cout << "\n";
 				return;
 			}
+			reset();
 		}
 
 		std::cout << timeTaken.count() << " time spend. Increasing depth to " << depth + 1 << ". Continue search...\n";
@@ -236,6 +244,7 @@ protected:
 	int _cFace;
 
 	std::vector<std::vector<std::vector<Color>>> _matrix;
+	std::vector<std::vector<std::vector<Color>>> _initMatrix;
 	std::vector<Rotation> _rotations;
 
 	/// <summary>
@@ -258,8 +267,6 @@ protected:
 		}
 	}
 	
-	
-
 	/// <summary>
 	/// Convert Rotations Log to string
 	/// </summary>
@@ -479,7 +486,6 @@ public:
 		Cube::applyRotation(r);
 	}
 
-
 protected:
 	/// <summary>
 	/// Rotate One face of the Cube
@@ -510,29 +516,37 @@ protected:
 
 int main(int argc, char* argv[]) {
 	Cube222 cube;
-	cube.applyRotation(U);
+	//cube.applyRotation(U);
 	//cube.applyRotation(R);
-	//for (int i = 1; i < argc; i += 2) {
-	//	if (i + 1 < argc) {
-	//		std::string tag = argv[i];
-	//		std::string values = argv[i + 1];
-	//		std::vector<Color> colors;
+	//cube.applyRotation(U);
 
-	//		// Convert string of colors to vector of Color enums
-	//		std::transform(values.begin(), values.end(), std::back_inserter(colors),
-	//			[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
+	for (int i = 1; i < argc; i += 2) {
+		if (i + 1 < argc) {
+			std::string tag = argv[i];
+			std::string values = argv[i + 1];
+			std::vector<Color> colors;
 
-	//		if (tagToFace.count(tag) > 0) {
-	//			cube.setColor(tagToFace[tag], colors);
-	//		}
-	//		else {
-	//			std::cout << "Invalid face tag: " << tag << std::endl;
-	//		}
-	//	}
-	//}
+			// Convert string of colors to vector of Color enums
+			std::transform(values.begin(), values.end(), std::back_inserter(colors),
+				[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
+
+			if (tagToFace.count(tag) > 0) {
+				cube.setColor(tagToFace[tag], colors);
+			}
+			else {
+				std::cout << "Invalid face tag: " << tag << std::endl;
+			}
+		}
+	}
+
+	cube.saveInitState();
 
 	std::cout << "2x2x2 Cube:" << std::endl;
 	cube.printCube();
-	//cube.dfs();
+
+	cube.dfs();
+	
+	cube.printCube();
+
 	return 0;
 };
