@@ -8,5 +8,6 @@
 #include <array>
 #include <chrono>
 #include <iomanip>
+#include <algorithm> 
 
 // TODO: Reference additional headers your program requires here.

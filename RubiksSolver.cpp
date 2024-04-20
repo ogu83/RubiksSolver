@@ -80,14 +80,12 @@ public:
 	/// Check if tich cube is solved or not
 	/// </summary>
 	/// <returns>Solved or Not</returns>
-	bool isSolved() const {
+	inline bool isSolved() const {
 		for (const auto& face : _matrix) {
-			Color firstColor = face[0][0];
+			const Color firstColor = face[0][0];
 			for (const auto& row : face) {
-				for (Color color : row) {
-					if (color != firstColor) {
-						return false;
-					}
+				if (std::any_of(row.begin(), row.end(), [firstColor](Color color) { return color != firstColor; })) {
+					return false;
 				}
 			}
 		}
@@ -129,18 +127,23 @@ public:
 		// Generate all combinations of moves up to the given depth
 		generateCombinations(allRotations, depth, currentPath, potentialSolutions);
 
-		auto startTime = std::chrono::steady_clock::now();
+		//auto startTime = std::chrono::steady_clock::now();
+		auto endTime = std::chrono::steady_clock::now();
+		std::chrono::duration<double> timeTaken = endTime - begin_time;
 
 		for (const auto& solution : potentialSolutions) {
 			std::unique_ptr<Cube> testCube(copy());  // Use smart pointers to manage memory
 			testCube->applySolution(solution);
 			
-			//testCube->printCube(true);
-			
-			if (testCube->isSolved()) {
-				auto endTime = std::chrono::steady_clock::now();
-				std::chrono::duration<double> timeTaken = endTime - begin_time;
+			//std::cout << "Testing: ";
+			//for (Rotation move : solution) {
+			//	std::cout << rotationToString(move) << " ";
+			//}
+			//std::cout << "\n";
 
+			//testCube->printCube(true);
+
+			if (testCube->isSolved()) {
 				std::cout << "Solved in " << timeTaken.count() << " seconds\n";
 				std::cout << "Solution: ";
 				for (Rotation move : solution) {
@@ -151,7 +154,7 @@ public:
 			}
 		}
 
-		std::cout << "Increasing depth to " << depth + 1 << " and continuing search...\n";
+		std::cout << timeTaken.count() << " time spend. Increasing depth to " << depth + 1 << ". Continue search...\n";
 		dfs(depth + 1, begin_time);
 	}
 
