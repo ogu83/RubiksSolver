@@ -161,11 +161,14 @@ public:
 	/// </summary>
 	/// <returns>Solved or Not</returns>
 	inline bool isSolved() const {
-		for (const auto& face : _matrix) {
-			const Color firstColor = face[0][0];
-			for (const auto& row : face) {
-				if (std::any_of(row.begin(), row.end(), [firstColor](Color color) { return color != firstColor; })) {
-					return false;
+		for (size_t f = 0; f < _cFace/2; ++f) {
+			auto face = _matrix[f];
+			const Color referenceColor = face[0][0];
+			for (size_t i = 0; i < _cCol; ++i) {
+				for (size_t j = 0; j < _cRow; ++j) {
+					if (face[i][j] != referenceColor) {
+						return false;
+					}
 				}
 			}
 		}
@@ -599,28 +602,32 @@ protected:
 int main(int argc, char* argv[]) {
 	Cube222 cube;
 
-	cube.applyRotation(R);
-	cube.applyRotation(U);
-	cube.applyRotation(F);
+	//cube.applyRotation(BI);
+	//cube.applyRotation(D);
+	//cube.applyRotation(B);
 
-	//for (int i = 1; i < argc; i += 2) {
-	//	if (i + 1 < argc) {
-	//		std::string tag = argv[i];
-	//		std::string values = argv[i + 1];
-	//		std::vector<Color> colors;
+	//cube.applyRotation(BI);
+	//cube.applyRotation(DI);
+	//cube.applyRotation(LI);
 
-	//		// Convert string of colors to vector of Color enums
-	//		std::transform(values.begin(), values.end(), std::back_inserter(colors),
-	//			[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
+	for (int i = 1; i < argc; i += 2) {
+		if (i + 1 < argc) {
+			std::string tag = argv[i];
+			std::string values = argv[i + 1];
+			std::vector<Color> colors;
 
-	//		if (tagToFace.count(tag) > 0) {
-	//			cube.setColor(tagToFace[tag], colors);
-	//		}
-	//		else {
-	//			std::cout << "Invalid face tag: " << tag << std::endl;
-	//		}
-	//	}
-	//}
+			// Convert string of colors to vector of Color enums
+			std::transform(values.begin(), values.end(), std::back_inserter(colors),
+				[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
+
+			if (tagToFace.count(tag) > 0) {
+				cube.setColor(tagToFace[tag], colors);
+			}
+			else {
+				std::cout << "Invalid face tag: " << tag << std::endl;
+			}
+		}
+	}
 
 	cube.saveInitState();
 
