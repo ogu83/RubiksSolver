@@ -1,4 +1,6 @@
-# RubiksSolver
+# Rubik's Cube Solver
+
+This is a rubik's cube solver using deep first search algoritms in c++.
 
 ## Compile
 
