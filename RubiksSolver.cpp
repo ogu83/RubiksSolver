@@ -4,7 +4,7 @@ using namespace std;
 
 enum Color { RED, BLUE, ORANGE, GREEN, WHITE, YELLOW, UNDEFINED };
 enum Faces { TOP, FRONT, RIGHT, BOTTOM, BACK, LEFT, NONE };
-enum Rotation { U, D, R, L, UI, DI, RI, LI };
+enum Rotation { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI };
 
 std::map<char, Color> charToColor = {
 	{'R', RED}, {'B', BLUE}, {'O', ORANGE}, {'G', GREEN}, {'W', WHITE}, {'Y', YELLOW}
@@ -200,29 +200,29 @@ public:
 			return;
 		}
 
-		static const std::vector<Rotation> allRotations = { U, D, R, L, UI, DI, RI, LI };
+		static const std::vector<Rotation> allRotations = { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI };
 		std::vector<Rotation> currentPath;
 		std::vector<std::vector<Rotation>> potentialSolutions;
 
 		// Generate all combinations of moves up to the given depth
 		generateCombinations(allRotations, depth, currentPath, potentialSolutions);
+		std::cout << potentialSolutions.size() << " combinations testing.\n";
 
-		//auto startTime = std::chrono::steady_clock::now();
 		auto endTime = std::chrono::steady_clock::now();
 		std::chrono::duration<double> timeTaken = endTime - begin_time;
+		//int printIndex = 0;
 
 		for (const auto& solution : potentialSolutions) {
-			//std::unique_ptr<Cube> testCube(copy());  // Use smart pointers to manage memory
-			//testCube->applySolution(solution);
 			//std::cout << "Testing: ";
 			//for (Rotation move : solution) {
 			//	std::cout << rotationToString(move) << " ";
 			//}
 			//std::cout << "\n";
+
 			//testCube->printCube(true);
 			applySolution(solution);
 			if (isSolved()) {
-				std::cout << "Solved in " << timeTaken.count() << " seconds\n";
+				std::cout << "Solved in " << timeTaken.count() << " seconds.\n";
 				std::cout << "Solution: ";
 				for (Rotation move : solution) {
 					std::cout << rotationToString(move) << " ";
@@ -233,7 +233,7 @@ public:
 			reset();
 		}
 
-		std::cout << timeTaken.count() << " time spend. Increasing depth to " << depth + 1 << ". Continue search...\n";
+		std::cout << timeTaken.count() << " seconds elapsed.\nIncreasing depth to " << depth + 1 << ". Continue search...\n";
 		dfs(depth + 1, begin_time);
 	}
 
@@ -266,7 +266,28 @@ protected:
 			currentPath.pop_back();
 		}
 	}
-	
+
+	//void generateCombinations(const std::vector<Rotation>& allRotations, int depth, std::vector<std::vector<Rotation>>& results) {
+	//	std::stack<std::vector<Rotation>> stk;
+	//	stk.push({});  // start with an empty path
+
+	//	while (!stk.empty()) {
+	//		std::vector<Rotation> currentPath = stk.top();
+	//		stk.pop();
+
+	//		if (currentPath.size() == depth) {
+	//			results.push_back(currentPath);
+	//		}
+	//		else {
+	//			for (Rotation r : allRotations) {
+	//				std::vector<Rotation> newPath = currentPath;
+	//				newPath.push_back(r);
+	//				stk.push(newPath);
+	//			}
+	//		}
+	//	}
+	//}
+
 	/// <summary>
 	/// Convert Rotations Log to string
 	/// </summary>
@@ -291,10 +312,14 @@ protected:
 		case D:		return "D";
 		case R:		return "R";
 		case L:		return "L";
+		case F:		return "F";
+		case B:		return "B";
 		case UI:	return "UI";
 		case DI:	return "DI";
 		case RI:	return "RI";
 		case LI:	return "LI";
+		case FI:	return "FI";
+		case BI:	return "BI";
 		default:	return "X";
 		}
 	}
@@ -395,6 +420,7 @@ public:
 	void applyRotation(Rotation r) override {
 		std::vector<Color> tempRow;
 		std::vector<Color> tempColumn(_cCol);
+		std::vector<Color> tempTop(_cCol);  // Top edge of the top face (temporarily stores top of top face)
 		if (r == U || r == UI) {
 			// Rotate the top face
 			rotateFace(TOP, r == U);
@@ -482,6 +508,62 @@ public:
 				}
 			}
 		}
+		else if (r == F || r == FI) {
+			// Rotate the front face
+			rotateFace(FRONT, r == F);
+
+			// Temporary storage for edge swapping
+			for (int i = 0; i < _cCol; ++i) {
+				tempTop[i] = _matrix[TOP][_cRow - 1][i];  // Capture bottom row of top face
+			}
+
+			if (r == F) {  // Clockwise
+				// Move columns of left to bottom of top, right to top of bottom, and so forth
+				for (int i = 0; i < _cCol; ++i) {
+					_matrix[TOP][_cRow - 1][i] = _matrix[LEFT][_cCol - 1 - i][_cRow - 1];  // Left to top (rotated)
+					_matrix[LEFT][_cCol - 1 - i][_cRow - 1] = _matrix[BOTTOM][0][i];     // Bottom to left (rotated)
+					_matrix[BOTTOM][0][i] = _matrix[RIGHT][i][0];                  // Right to bottom
+					_matrix[RIGHT][i][0] = tempTop[_cCol - 1 - i];                     // Top to right (rotated)
+				}
+			}
+			else {  // Counter-Clockwise (FI)
+				// Move columns of right to bottom of top, left to top of bottom, and so forth
+				for (int i = 0; i < _cCol; ++i) {
+					_matrix[TOP][_cRow - 1][i] = _matrix[RIGHT][i][0];               // Right to top
+					_matrix[RIGHT][i][0] = _matrix[BOTTOM][0][_cCol - 1 - i];          // Bottom to right (rotated)
+					_matrix[BOTTOM][0][_cCol - 1 - i] = _matrix[LEFT][_cCol - 1 - i][_cRow - 1]; // Left to bottom (rotated)
+					_matrix[LEFT][_cCol - 1 - i][_cRow - 1] = tempTop[i];                // Top to left
+				}
+			}
+		}
+		else if (r == B || r == BI) {
+			// rotate the back face
+			rotateFace(BACK, r == B);
+
+			// Temporary storage for edge swapping
+			for (int i = 0; i < _cCol; ++i) {
+				tempTop[i] = _matrix[TOP][0][i];  // Capture top row of top face
+			}
+
+			if (r == B) {  // Clockwise
+				// Move columns of right to top of top, left to bottom of bottom, and so forth
+				for (int i = 0; i < _cCol; ++i) {
+					_matrix[TOP][0][i] = _matrix[LEFT][_cCol - 1 - i][0];   // Left to top (rotated)
+					_matrix[LEFT][_cCol - 1 - i][0] = _matrix[BOTTOM][_cRow - 1][_cCol - 1 - i];  // Bottom to left (rotated)
+					_matrix[BOTTOM][_cRow - 1][_cCol - 1 - i] = _matrix[RIGHT][i][_cRow - 1];   // Right to bottom (not rotated but repositioned)
+					_matrix[RIGHT][i][_cRow - 1] = tempTop[_cCol - 1 - i];     // Top to right (rotated)
+				}
+			}
+			else {  // Counter-Clockwise (BI)
+				// Move columns of left to top of top, right to bottom of bottom, and so forth
+				for (int i = 0; i < _cCol; ++i) {
+					_matrix[TOP][0][i] = _matrix[RIGHT][i][_cRow - 1];                // Right to top
+					_matrix[RIGHT][i][_cRow - 1] = _matrix[BOTTOM][_cRow - 1][_cCol - 1 - i];   // Bottom to right (rotated)
+					_matrix[BOTTOM][_cRow - 1][_cCol - 1 - i] = _matrix[LEFT][_cCol - 1 - i][0];   // Left to bottom (rotated)
+					_matrix[LEFT][_cCol - 1 - i][0] = tempTop[i];                          // Top to left
+				}
+			}
+		}
 
 		Cube::applyRotation(r);
 	}
@@ -516,28 +598,29 @@ protected:
 
 int main(int argc, char* argv[]) {
 	Cube222 cube;
-	//cube.applyRotation(U);
-	//cube.applyRotation(R);
-	//cube.applyRotation(U);
 
-	for (int i = 1; i < argc; i += 2) {
-		if (i + 1 < argc) {
-			std::string tag = argv[i];
-			std::string values = argv[i + 1];
-			std::vector<Color> colors;
+	cube.applyRotation(R);
+	cube.applyRotation(U);
+	cube.applyRotation(F);
 
-			// Convert string of colors to vector of Color enums
-			std::transform(values.begin(), values.end(), std::back_inserter(colors),
-				[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
+	//for (int i = 1; i < argc; i += 2) {
+	//	if (i + 1 < argc) {
+	//		std::string tag = argv[i];
+	//		std::string values = argv[i + 1];
+	//		std::vector<Color> colors;
 
-			if (tagToFace.count(tag) > 0) {
-				cube.setColor(tagToFace[tag], colors);
-			}
-			else {
-				std::cout << "Invalid face tag: " << tag << std::endl;
-			}
-		}
-	}
+	//		// Convert string of colors to vector of Color enums
+	//		std::transform(values.begin(), values.end(), std::back_inserter(colors),
+	//			[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
+
+	//		if (tagToFace.count(tag) > 0) {
+	//			cube.setColor(tagToFace[tag], colors);
+	//		}
+	//		else {
+	//			std::cout << "Invalid face tag: " << tag << std::endl;
+	//		}
+	//	}
+	//}
 
 	cube.saveInitState();
 
@@ -545,7 +628,7 @@ int main(int argc, char* argv[]) {
 	cube.printCube();
 
 	cube.dfs();
-	
+
 	cube.printCube();
 
 	return 0;
