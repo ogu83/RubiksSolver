@@ -404,12 +404,6 @@ public:
 		Cube(initialColor, cRow, cCol, cFace) {
 	}
 
-	//Cube copy() const override {
-	//	Cube222 newCube(*this);  // Create a copy of this cube
-	//	newCube._matrix = _matrix;  // Copy the matrix explicitly if needed
-	//	return newCube;
-	//}
-
 	Cube* copy() const override {
 		Cube222* newCube = new Cube222(*this);  // Dynamically allocate a new Cube222
 		newCube->_matrix = this->_matrix;       // Explicitly copy the matrix
@@ -601,14 +595,6 @@ protected:
 
 int main(int argc, char* argv[]) {
 	Cube222 cube;
-
-	//cube.applyRotation(BI);
-	//cube.applyRotation(D);
-	//cube.applyRotation(B);
-
-	//cube.applyRotation(BI);
-	//cube.applyRotation(DI);
-	//cube.applyRotation(LI);
 
 	for (int i = 1; i < argc; i += 2) {
 		if (i + 1 < argc) {
