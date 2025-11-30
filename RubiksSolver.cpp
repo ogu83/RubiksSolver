@@ -441,17 +441,17 @@ public:
 			rotateFace(BOTTOM, r == D);
 			// Cycle te bottom rows
 			tempRow = _matrix[FRONT][1]; // Copy front down row
-			if (r == D) { // Clockwise
-				_matrix[FRONT][1] = _matrix[RIGHT][1];
-				_matrix[RIGHT][1] = _matrix[BACK][1];
-				_matrix[BACK][1] = _matrix[LEFT][1];
-				_matrix[LEFT][1] = tempRow;
-			}
-			else { // Counter-clockwise
+			if (r == D) { // Clockwise (viewed from below): F→R→B→L→F
 				_matrix[FRONT][1] = _matrix[LEFT][1];
 				_matrix[LEFT][1] = _matrix[BACK][1];
 				_matrix[BACK][1] = _matrix[RIGHT][1];
 				_matrix[RIGHT][1] = tempRow;
+			}
+			else { // Counter-clockwise (viewed from below): F→L→B→R→F
+				_matrix[FRONT][1] = _matrix[RIGHT][1];
+				_matrix[RIGHT][1] = _matrix[BACK][1];
+				_matrix[BACK][1] = _matrix[LEFT][1];
+				_matrix[LEFT][1] = tempRow;
 			}
 		}
 		else if (r == L || r == LI) {
