@@ -1,10 +1,10 @@
-﻿#include "RubiksSolver.h"
+#include "RubiksSolver.h"
 
 using namespace std;
 
-enum Color { RED, BLUE, ORANGE, GREEN, WHITE, YELLOW, UNDEFINED };
-enum Faces { TOP, FRONT, RIGHT, BOTTOM, BACK, LEFT, NONE };
-enum Rotation { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI };
+enum Color { RED, BLUE, ORANGE, GREEN, WHITE, YELLOW, UNDEFINED }; 
+enum Faces { TOP, FRONT, RIGHT, BOTTOM, BACK, LEFT, NONE }; 
+enum Rotation { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI, ROTATION_NONE };
 
 std::map<char, Color> charToColor = {
 	{'R', RED}, {'B', BLUE}, {'O', ORANGE}, {'G', GREEN}, {'W', WHITE}, {'Y', YELLOW}
@@ -13,6 +13,16 @@ std::map<char, Color> charToColor = {
 std::map<std::string, Faces> tagToFace = {
 	{"-ft", TOP}, {"-ff", FRONT}, {"-fr", RIGHT}, {"-fb", BOTTOM}, {"-fbk", BACK}, {"-fl", LEFT}
 };
+
+// Inverse rotation lookup table for move pruning
+const Rotation inverseRotation[] = { UI, DI, RI, LI, FI, BI, U, D, R, L, F, B, ROTATION_NONE };
+
+// Face group lookup - moves on the same face or opposite faces can be optimized
+// 0 = U/D axis, 1 = R/L axis, 2 = F/B axis
+const int rotationAxis[] = { 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, 2, 2, -1 };
+
+// Base face for each rotation (without considering inverse)
+const int rotationBaseFace[] = { 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, -1 };
 
 class Cube {
 public:
@@ -124,6 +134,17 @@ public:
 	}
 
 	/// <summary>
+	/// Undo a rotation (apply the inverse)
+	/// </summary>
+	/// <param name="r">Rotation to undo</param>
+	virtual void undoRotation(Rotation r) {
+		applyRotationInternal(inverseRotation[r]);
+		if (!_rotations.empty()) {
+			_rotations.pop_back();
+		}
+	}
+
+	/// <summary>
 	/// Utility to print the cube's configuration
 	/// </summary>
 	/// <param name="shortPrint"></param>
@@ -157,12 +178,12 @@ public:
 	}
 
 	/// <summary>
-	/// Check if tich cube is solved or not
+	/// Check if this cube is solved or not
 	/// </summary>
 	/// <returns>Solved or Not</returns>
 	inline bool isSolved() const {
 		for (size_t f = 0; f < _cFace/2; ++f) {
-			auto face = _matrix[f];
+			const auto& face = _matrix[f];
 			const Color referenceColor = face[0][0];
 			for (size_t i = 0; i < _cCol; ++i) {
 				for (size_t j = 0; j < _cRow; ++j) {
@@ -173,6 +194,77 @@ public:
 			}
 		}
 		return true;
+	}
+
+	/// <summary>
+	/// Heuristic function for IDA* - counts misplaced stickers
+	/// Returns an admissible heuristic (never overestimates)
+	/// </summary>
+	/// <returns>Estimated minimum moves to solve</returns>
+	int heuristic() const {
+		int misplaced = 0;
+		for (size_t f = 0; f < _cFace; ++f) {
+			const auto& face = _matrix[f];
+			const Color referenceColor = face[0][0];
+			for (size_t i = 0; i < _cCol; ++i) {
+				for (size_t j = 0; j < _cRow; ++j) {
+					if (face[i][j] != referenceColor) {
+						misplaced++;
+					}
+				}
+			}
+		}
+		// Each move affects at most 8 stickers (4 on the face + 4 on adjacent faces for 2x2)
+		// Using /8 makes this admissible but can be tuned
+		return misplaced / 8;
+	}
+
+	/// <summary>
+	/// Generate a unique hash for the current cube state
+	/// Used for memoization to avoid revisiting states
+	/// </summary>
+	/// <returns>String hash of the cube state</returns>
+	std::string getStateHash() const {
+		std::string hash;
+		hash.reserve(_cFace * _cRow * _cCol);
+		for (int f = 0; f < _cFace; f++) {
+			for (int i = 0; i < _cRow; i++) {
+				for (int j = 0; j < _cCol; j++) {
+					hash += static_cast<char>('0' + _matrix[f][i][j]);
+				}
+			}
+		}
+		return hash;
+	}
+
+	/// <summary>
+	/// Check if a move is redundant given the last move
+	/// Prunes moves that cancel out or can be combined
+	/// </summary>
+	/// <param name="lastMove">The previous move</param>
+	/// <param name="currentMove">The move to check</param>
+	/// <returns>True if the move is redundant</returns>
+	static bool isRedundantMove(Rotation lastMove, Rotation currentMove) {
+		if (lastMove == ROTATION_NONE) return false;
+		
+		// Don't allow inverse immediately after a move (they cancel out)
+		// e.g., U followed by UI is wasteful
+		if (inverseRotation[lastMove] == currentMove) return true;
+		
+		// Don't allow same move twice in a row (should use double move notation)
+		// e.g., U U should be U2 in optimal solving
+		if (lastMove == currentMove) return true;
+		
+		// For moves on the same axis, enforce an ordering to avoid duplicates
+		// e.g., U D is same as D U, so only allow one ordering
+		if (rotationAxis[lastMove] == rotationAxis[currentMove]) {
+			// Allow the move only if it's "larger" to enforce consistent ordering
+			int lastBase = rotationBaseFace[lastMove];
+			int currentBase = rotationBaseFace[currentMove];
+			if (lastBase > currentBase) return true;
+		}
+		
+		return false;
 	}
 
 	/// <summary>
@@ -190,15 +282,69 @@ public:
 	/// </summary>
 	/// <returns>The Cube</returns>
 	virtual Cube* copy() const {
-		return new Cube(WHITE, _cRow, _cCol, _cFace); // Return a new Cube allocated with new
+		return new Cube(WHITE, _cRow, _cCol, _cFace);
 	}
 
 	/// <summary>
-	/// Depth First Search For Solve The Cube
+	/// IDA* (Iterative Deepening A*) search - much faster than brute force DFS
+	/// Uses heuristic to prune branches that can't lead to a solution
 	/// </summary>
-	/// <param name="depth">Depth</param>
-	/// <param name="begin_time">Start Time</param>
+	/// <param name="begin_time">Start time for timing</param>
+	virtual void idaStar(const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
+		if (isSolved()) {
+			std::cout << "Already solved!\n";
+			return;
+		}
+
+		_solutionFound = false;
+		_solution.clear();
+		_nodesExplored = 0;
+
+		int depthLimit = heuristic();  // Start with heuristic estimate
+		if (depthLimit == 0) depthLimit = 1;
+
+		while (!_solutionFound && depthLimit <= 20) {  // Max depth limit for safety
+			std::cout << "Searching depth " << depthLimit << "...\n";
+			_visitedStates.clear();  // Clear visited states for each depth iteration
+			
+			std::vector<Rotation> path;
+			idaStarRecursive(0, depthLimit, ROTATION_NONE, path, begin_time);
+			
+			if (_solutionFound) {
+				auto endTime = std::chrono::steady_clock::now();
+				std::chrono::duration<double> timeTaken = endTime - begin_time;
+				std::cout << "Solved in " << timeTaken.count() << " seconds.\n";
+				std::cout << "Nodes explored: " << _nodesExplored << "\n";
+				std::cout << "Solution (" << _solution.size() << " moves): ";
+				for (Rotation move : _solution) {
+					std::cout << rotationToString(move) << " ";
+				}
+				std::cout << "\n";
+				
+				// Apply the solution
+				applySolution(_solution);
+				return;
+			}
+			
+			depthLimit++;
+		}
+
+		std::cout << "No solution found within depth limit.\n";
+	}
+
+	/// <summary>
+	/// Original DFS method (kept for backwards compatibility)
+	/// Now calls the optimized IDA* instead
+	/// </summary>
 	virtual void dfs(int depth = 1, const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
+		// Use the new optimized IDA* search
+		idaStar(begin_time);
+	}
+
+	/// <summary>
+	/// Legacy brute-force DFS (kept for comparison/testing)
+	/// </summary>
+	virtual void dfsLegacy(int depth = 1, const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
 		if (isSolved()) {
 			return;
 		}
@@ -213,16 +359,8 @@ public:
 
 		auto endTime = std::chrono::steady_clock::now();
 		std::chrono::duration<double> timeTaken = endTime - begin_time;
-		//int printIndex = 0;
 
 		for (const auto& solution : potentialSolutions) {
-			//std::cout << "Testing: ";
-			//for (Rotation move : solution) {
-			//	std::cout << rotationToString(move) << " ";
-			//}
-			//std::cout << "\n";
-
-			//testCube->printCube(true);
 			applySolution(solution);
 			if (isSolved()) {
 				std::cout << "Solved in " << timeTaken.count() << " seconds.\n";
@@ -237,7 +375,7 @@ public:
 		}
 
 		std::cout << timeTaken.count() << " seconds elapsed.\nIncreasing depth to " << depth + 1 << ". Continue search...\n";
-		dfs(depth + 1, begin_time);
+		dfsLegacy(depth + 1, begin_time);
 	}
 
 protected:
@@ -250,12 +388,77 @@ protected:
 	std::vector<std::vector<std::vector<Color>>> _initMatrix;
 	std::vector<Rotation> _rotations;
 
+	// IDA* search state
+	bool _solutionFound = false;
+	std::vector<Rotation> _solution;
+	std::unordered_set<std::string> _visitedStates;
+	size_t _nodesExplored = 0;
+
+	/// <summary>
+	/// Internal rotation application (without tracking)
+	/// </summary>
+	virtual void applyRotationInternal(Rotation r) { }
+
 	/// <summary>
 	/// Rotate One face of the Cube
 	/// </summary>
 	/// <param name="face">Face</param>
 	/// <param name="clockwise">ClockWise or Counter Clock Wise</param>
-	virtual void rotateFace(Faces face, bool clockwise) { };
+	virtual void rotateFace(Faces face, bool clockwise) { }; 
+
+	/// <summary>
+	/// Recursive IDA* search
+	/// </summary>
+	bool idaStarRecursive(int currentDepth, int depthLimit, Rotation lastMove, 
+		std::vector<Rotation>& path,
+		const std::chrono::time_point<std::chrono::steady_clock>& begin_time) {
+		_nodesExplored++;
+		
+		// Check if solved
+		if (isSolved()) {
+			_solutionFound = true;
+			_solution = path;
+			return true;
+		}
+
+		// Pruning: if current depth + heuristic > limit, don't explore further
+		int h = heuristic();
+		if (currentDepth + h > depthLimit) {
+			return false;
+		}
+
+		// State hashing to avoid revisiting
+		std::string stateHash = getStateHash();
+		if (_visitedStates.find(stateHash) != _visitedStates.end()) {
+			return false;  // Already visited this state
+		}
+		_visitedStates.insert(stateHash);
+
+		// Try all rotations with pruning
+		static const std::vector<Rotation> allRotations = { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI };
+		
+		for (Rotation r : allRotations) {
+			// Prune redundant moves
+			if (isRedundantMove(lastMove, r)) {
+				continue;
+			}
+
+			// Apply move
+			applyRotation(r);
+			path.push_back(r);
+
+			// Recurse
+			if (idaStarRecursive(currentDepth + 1, depthLimit, r, path, begin_time)) {
+				return true;
+			}
+
+			// Undo move (backtrack)
+			undoRotation(r);
+			path.pop_back();
+		}
+
+		return false;
+	}
 
 	void generateCombinations(const std::vector<Rotation>& allRotations, int depth, std::vector<Rotation>& currentPath, std::vector<std::vector<Rotation>>& results) {
 		if (depth == 0) {
@@ -269,27 +472,6 @@ protected:
 			currentPath.pop_back();
 		}
 	}
-
-	//void generateCombinations(const std::vector<Rotation>& allRotations, int depth, std::vector<std::vector<Rotation>>& results) {
-	//	std::stack<std::vector<Rotation>> stk;
-	//	stk.push({});  // start with an empty path
-
-	//	while (!stk.empty()) {
-	//		std::vector<Rotation> currentPath = stk.top();
-	//		stk.pop();
-
-	//		if (currentPath.size() == depth) {
-	//			results.push_back(currentPath);
-	//		}
-	//		else {
-	//			for (Rotation r : allRotations) {
-	//				std::vector<Rotation> newPath = currentPath;
-	//				newPath.push_back(r);
-	//				stk.push(newPath);
-	//			}
-	//		}
-	//	}
-	//}
 
 	/// <summary>
 	/// Convert Rotations Log to string
@@ -311,18 +493,18 @@ protected:
 	std::string rotationToString(Rotation r) {
 		switch (r)
 		{
-		case U:		return "U";
-		case D:		return "D";
-		case R:		return "R";
-		case L:		return "L";
-		case F:		return "F";
-		case B:		return "B";
-		case UI:	return "UI";
-		case DI:	return "DI";
-		case RI:	return "RI";
-		case LI:	return "LI";
-		case FI:	return "FI";
-		case BI:	return "BI";
+		case U: 	return "U";
+		case D: 	return "D";
+		case R: 	return "R";
+		case L: 	return "L";
+		case F: 	return "F";
+		case B: 	return "B";
+		case UI: 	return "UI";
+		case DI: 	return "DI";
+		case RI: 	return "RI";
+		case LI: 	return "LI";
+		case FI: 	return "FI";
+		case BI: 	return "BI";
 		default:	return "X";
 		}
 	}
@@ -405,9 +587,9 @@ public:
 	}
 
 	Cube* copy() const override {
-		Cube222* newCube = new Cube222(*this);  // Dynamically allocate a new Cube222
-		newCube->_matrix = this->_matrix;       // Explicitly copy the matrix
-		return newCube;                         // Return as a pointer to Cube
+		Cube222* newCube = new Cube222(*this);
+		newCube->_matrix = this->_matrix;
+		return newCube;
 	}
 
 	/// <summary>
@@ -415,21 +597,39 @@ public:
 	/// </summary>
 	/// <param name="r">Rotation</param>
 	void applyRotation(Rotation r) override {
+		applyRotationInternal(r);
+		Cube::applyRotation(r);
+	}
+
+	/// <summary>
+	/// Undo a rotation
+	/// </summary>
+	void undoRotation(Rotation r) override {
+		applyRotationInternal(inverseRotation[r]);
+		if (!_rotations.empty()) {
+			_rotations.pop_back();
+		}
+	}
+
+protected:
+	/// <summary>
+	/// Internal rotation logic without tracking
+	/// </summary>
+	void applyRotationInternal(Rotation r) override {
 		std::vector<Color> tempRow;
 		std::vector<Color> tempColumn(_cCol);
-		std::vector<Color> tempTop(_cCol);  // Top edge of the top face (temporarily stores top of top face)
+		std::vector<Color> tempTop(_cCol);
+
 		if (r == U || r == UI) {
-			// Rotate the top face
 			rotateFace(TOP, r == U);
-			// Cycle the top rows
-			tempRow = _matrix[FRONT][0]; // Copy front top row
-			if (r == U) { // Clockwise
+			tempRow = _matrix[FRONT][0];
+			if (r == U) {
 				_matrix[FRONT][0] = _matrix[RIGHT][0];
 				_matrix[RIGHT][0] = _matrix[BACK][0];
 				_matrix[BACK][0] = _matrix[LEFT][0];
 				_matrix[LEFT][0] = tempRow;
 			}
-			else { // Counter-clockwise (UI)
+			else {
 				_matrix[FRONT][0] = _matrix[LEFT][0];
 				_matrix[LEFT][0] = _matrix[BACK][0];
 				_matrix[BACK][0] = _matrix[RIGHT][0];
@@ -437,17 +637,15 @@ public:
 			}
 		}
 		else if (r == D || r == DI) {
-			// Rotate the bottom face
 			rotateFace(BOTTOM, r == D);
-			// Cycle te bottom rows
-			tempRow = _matrix[FRONT][1]; // Copy front down row
-			if (r == D) { // Clockwise (viewed from below): F→R→B→L→F
+			tempRow = _matrix[FRONT][1];
+			if (r == D) {
 				_matrix[FRONT][1] = _matrix[LEFT][1];
 				_matrix[LEFT][1] = _matrix[BACK][1];
 				_matrix[BACK][1] = _matrix[RIGHT][1];
 				_matrix[RIGHT][1] = tempRow;
 			}
-			else { // Counter-clockwise (viewed from below): F→L→B→R→F
+			else {
 				_matrix[FRONT][1] = _matrix[RIGHT][1];
 				_matrix[RIGHT][1] = _matrix[BACK][1];
 				_matrix[BACK][1] = _matrix[LEFT][1];
@@ -455,174 +653,131 @@ public:
 			}
 		}
 		else if (r == L || r == LI) {
-			// Rotate the left face
 			rotateFace(LEFT, r == L);
-			// Cycling the columns for L or LI rotation
-			for (int i = 0; i < _cCol; i++) {  // Since it's a 2x2 cube
-				tempColumn[i] = _matrix[TOP][i][0];  // Store the left column of the top face
+			for (int i = 0; i < _cCol; i++) {
+				tempColumn[i] = _matrix[TOP][i][0];
 			}
 
-			if (r == L) { // Clockwise
+			if (r == L) {
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][0] = _matrix[BACK][1 - i][1];  // Back to top, flipped vertically
-					_matrix[BACK][1 - i][1] = _matrix[BOTTOM][i][0];  // Bottom to back, flipped vertically
-					_matrix[BOTTOM][i][0] = _matrix[FRONT][i][0];  // Front to bottom
-					_matrix[FRONT][i][0] = tempColumn[i];  // Top to front
+					_matrix[TOP][i][0] = _matrix[BACK][1 - i][1];
+					_matrix[BACK][1 - i][1] = _matrix[BOTTOM][i][0];
+					_matrix[BOTTOM][i][0] = _matrix[FRONT][i][0];
+					_matrix[FRONT][i][0] = tempColumn[i];
 				}
 			}
-			else { // Counter-clockwise
+			else {
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][0] = _matrix[FRONT][i][0];  // Front to top
-					_matrix[FRONT][i][0] = _matrix[BOTTOM][i][0];  // Bottom to front
-					_matrix[BOTTOM][i][0] = _matrix[BACK][1 - i][1];  // Back to bottom, flipped vertically
-					_matrix[BACK][1 - i][1] = tempColumn[i];  // Top to back, flipped vertically
+					_matrix[TOP][i][0] = _matrix[FRONT][i][0];
+					_matrix[FRONT][i][0] = _matrix[BOTTOM][i][0];
+					_matrix[BOTTOM][i][0] = _matrix[BACK][1 - i][1];
+					_matrix[BACK][1 - i][1] = tempColumn[i];
 				}
 			}
 		}
 		else if (r == R || r == RI) {
-			// Rotate the right face
 			rotateFace(RIGHT, r == R);
 
-			// Cycling the columns for R or RI rotation
 			for (int i = 0; i < _cCol; i++) {
-				tempColumn[i] = _matrix[TOP][i][1];  // Store the right column of the top face
+				tempColumn[i] = _matrix[TOP][i][1];
 			}
 
-			if (r == R) { // Clockwise
+			if (r == R) {
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][1] = _matrix[FRONT][i][1];  // Front to top
-					_matrix[FRONT][i][1] = _matrix[BOTTOM][i][1];  // Bottom to front
-					_matrix[BOTTOM][i][1] = _matrix[BACK][1 - i][0];  // Back (flipped vertically) to bottom
-					_matrix[BACK][1 - i][0] = tempColumn[i];  // Top to back (flipped vertically)
+					_matrix[TOP][i][1] = _matrix[FRONT][i][1];
+					_matrix[FRONT][i][1] = _matrix[BOTTOM][i][1];
+					_matrix[BOTTOM][i][1] = _matrix[BACK][1 - i][0];
+					_matrix[BACK][1 - i][0] = tempColumn[i];
 				}
 			}
-			else { // Counter-clockwise (RI)
+			else {
 				for (int i = 0; i < _cCol; i++) {
-					_matrix[TOP][i][1] = _matrix[BACK][1 - i][0];  // Back (flipped vertically) to top
-					_matrix[BACK][1 - i][0] = _matrix[BOTTOM][i][1];  // Bottom to back (flipped vertically)
-					_matrix[BOTTOM][i][1] = _matrix[FRONT][i][1];  // Front to bottom
-					_matrix[FRONT][i][1] = tempColumn[i];  // Top to front
+					_matrix[TOP][i][1] = _matrix[BACK][1 - i][0];
+					_matrix[BACK][1 - i][0] = _matrix[BOTTOM][i][1];
+					_matrix[BOTTOM][i][1] = _matrix[FRONT][i][1];
+					_matrix[FRONT][i][1] = tempColumn[i];
 				}
 			}
 		}
 		else if (r == F || r == FI) {
-			// Rotate the front face
 			rotateFace(FRONT, r == F);
 
-			// Temporary storage for edge swapping
 			for (int i = 0; i < _cCol; ++i) {
-				tempTop[i] = _matrix[TOP][_cRow - 1][i];  // Capture bottom row of top face
+				tempTop[i] = _matrix[TOP][_cRow - 1][i];
 			}
 
-			if (r == F) {  // Clockwise
-				// Move columns of left to bottom of top, right to top of bottom, and so forth
+			if (r == F) {
 				for (int i = 0; i < _cCol; ++i) {
-					_matrix[TOP][_cRow - 1][i] = _matrix[LEFT][_cCol - 1 - i][_cRow - 1];  // Left to top (rotated)
-					_matrix[LEFT][_cCol - 1 - i][_cRow - 1] = _matrix[BOTTOM][0][i];     // Bottom to left (rotated)
-					_matrix[BOTTOM][0][i] = _matrix[RIGHT][i][0];                  // Right to bottom
-					_matrix[RIGHT][i][0] = tempTop[_cCol - 1 - i];                     // Top to right (rotated)
+					_matrix[TOP][_cRow - 1][i] = _matrix[LEFT][_cCol - 1 - i][_cRow - 1];
+					_matrix[LEFT][_cCol - 1 - i][_cRow - 1] = _matrix[BOTTOM][0][i];
+					_matrix[BOTTOM][0][i] = _matrix[RIGHT][i][0];
+					_matrix[RIGHT][i][0] = tempTop[_cCol - 1 - i];
 				}
 			}
-			else {  // Counter-Clockwise (FI)
-				// Move columns of right to bottom of top, left to top of bottom, and so forth
+			else {
 				for (int i = 0; i < _cCol; ++i) {
-					_matrix[TOP][_cRow - 1][i] = _matrix[RIGHT][i][0];               // Right to top
-					_matrix[RIGHT][i][0] = _matrix[BOTTOM][0][_cCol - 1 - i];          // Bottom to right (rotated)
-					_matrix[BOTTOM][0][_cCol - 1 - i] = _matrix[LEFT][_cCol - 1 - i][_cRow - 1]; // Left to bottom (rotated)
-					_matrix[LEFT][_cCol - 1 - i][_cRow - 1] = tempTop[i];                // Top to left
+					_matrix[TOP][_cRow - 1][i] = _matrix[RIGHT][i][0];
+					_matrix[RIGHT][i][0] = _matrix[BOTTOM][0][_cCol - 1 - i];
+					_matrix[BOTTOM][0][_cCol - 1 - i] = _matrix[LEFT][_cCol - 1 - i][_cRow - 1];
+					_matrix[LEFT][_cCol - 1 - i][_cRow - 1] = tempTop[i];
 				}
 			}
 		}
 		else if (r == B || r == BI) {
-			// rotate the back face
 			rotateFace(BACK, r == B);
 
-			// Temporary storage for edge swapping
 			for (int i = 0; i < _cCol; ++i) {
-				tempTop[i] = _matrix[TOP][0][i];  // Capture top row of top face
+				tempTop[i] = _matrix[TOP][0][i];
 			}
 
-			if (r == B) {  // Clockwise
-				// Move columns of right to top of top, left to bottom of bottom, and so forth
+			if (r == B) {
 				for (int i = 0; i < _cCol; ++i) {
-					_matrix[TOP][0][i] = _matrix[LEFT][_cCol - 1 - i][0];   // Left to top (rotated)
-					_matrix[LEFT][_cCol - 1 - i][0] = _matrix[BOTTOM][_cRow - 1][_cCol - 1 - i];  // Bottom to left (rotated)
-					_matrix[BOTTOM][_cRow - 1][_cCol - 1 - i] = _matrix[RIGHT][i][_cRow - 1];   // Right to bottom (not rotated but repositioned)
-					_matrix[RIGHT][i][_cRow - 1] = tempTop[_cCol - 1 - i];     // Top to right (rotated)
+					_matrix[TOP][0][i] = _matrix[LEFT][_cCol - 1 - i][0];
+					_matrix[LEFT][_cCol - 1 - i][0] = _matrix[BOTTOM][_cRow - 1][_cCol - 1 - i];
+					_matrix[BOTTOM][_cRow - 1][_cCol - 1 - i] = _matrix[RIGHT][i][_cRow - 1];
+					_matrix[RIGHT][i][_cRow - 1] = tempTop[_cCol - 1 - i];
 				}
-			}
-			else {  // Counter-Clockwise (BI)
-				// Move columns of left to top of top, right to bottom of bottom, and so forth
-				for (int i = 0; i < _cCol; ++i) {
-					_matrix[TOP][0][i] = _matrix[RIGHT][i][_cRow - 1];                // Right to top
-					_matrix[RIGHT][i][_cRow - 1] = _matrix[BOTTOM][_cRow - 1][_cCol - 1 - i];   // Bottom to right (rotated)
-					_matrix[BOTTOM][_cRow - 1][_cCol - 1 - i] = _matrix[LEFT][_cCol - 1 - i][0];   // Left to bottom (rotated)
-					_matrix[LEFT][_cCol - 1 - i][0] = tempTop[i];                          // Top to left
-				}
-			}
-		}
-
-		Cube::applyRotation(r);
-	}
-
-protected:
-	/// <summary>
-	/// Rotate One face of the Cube
-	/// </summary>
-	/// <param name="face">Face</param>
-	/// <param name="clockwise">ClockWise or Counter Clock Wise</param>
-	void rotateFace(Faces face, bool clockwise) override {
-		if (clockwise) {
-			// Rotate face 90 degrees clockwise
-			Color temp = _matrix[face][0][0];
-			_matrix[face][0][0] = _matrix[face][1][0];
-			_matrix[face][1][0] = _matrix[face][1][1];
-			_matrix[face][1][1] = _matrix[face][0][1];
-			_matrix[face][0][1] = temp;
-		}
-		else {
-			// Rotate face 90 degrees counterclockwise
-			Color temp = _matrix[face][0][0];
-			_matrix[face][0][0] = _matrix[face][0][1];
-			_matrix[face][0][1] = _matrix[face][1][1];
-			_matrix[face][1][1] = _matrix[face][1][0];
-			_matrix[face][1][0] = temp;
-		}
-
-		Cube::rotateFace(face, clockwise);
-	}
-};
-
-int main(int argc, char* argv[]) {
-	Cube222 cube;
-
-	for (int i = 1; i < argc; i += 2) {
-		if (i + 1 < argc) {
-			std::string tag = argv[i];
-			std::string values = argv[i + 1];
-			std::vector<Color> colors;
-
-			// Convert string of colors to vector of Color enums
-			std::transform(values.begin(), values.end(), std::back_inserter(colors),
-				[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
-
-			if (tagToFace.count(tag) > 0) {
-				cube.setColor(tagToFace[tag], colors);
 			}
 			else {
-				std::cout << "Invalid face tag: " << tag << std::endl;
+				for (int i = 0; i < _cCol; ++i) {
+					_matrix[TOP][0][i] = _matrix[RIGHT][i][_cRow - 1];
+					_matrix[RIGHT][i][_cRow - 1] = _matrix[BOTTOM][_cRow - 1][_cCol - 1 - i];
+					_matrix[BOTTOM][_cRow - 1][_cCol - 1 - i] = _matrix[LEFT][_cCol - 1 - i][0];
+					_matrix[LEFT][_cCol - 1 - i][0] = tempTop[i];
+				}
 			}
 		}
 	}
 
-	cube.saveInitState();
+	int main(int argc, char* argv[]) {
+		Cube222 cube;
 
-	std::cout << "2x2x2 Cube:" << std::endl;
-	cube.printCube();
+		for (int i = 1; i < argc; i += 2) {
+			if (i + 1 < argc) {
+				std::string tag = argv[i];
+				std::string values = argv[i + 1];
+				std::vector<Color> colors;
 
-	cube.dfs();
+				std::transform(values.begin(), values.end(), std::back_inserter(colors),
+					[](char c) -> Color { return charToColor.count(c) > 0 ? charToColor[c] : UNDEFINED; });
 
-	cube.printCube();
+				if (tagToFace.count(tag) > 0) {
+					cube.setColor(tagToFace[tag], colors);
+				}
+				else {
+					std::cout << "Invalid face tag: " << tag << std::endl;
+				}
+			}
+		}
 
-	return 0;
-};
+		cube.saveInitState();
+
+		std::cout << "2x2x2 Cube:" << std::endl;
+		cube.printCube();
+
+		cube.dfs();
+
+		cube.printCube();
+
+		return 0;
+	};
