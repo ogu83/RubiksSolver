@@ -1,3 +1,0 @@
-/home/runner/work/RubiksSolver/RubiksSolver/build/CMakeFiles/RubiksSolver.dir
-/home/runner/work/RubiksSolver/RubiksSolver/build/CMakeFiles/edit_cache.dir
-/home/runner/work/RubiksSolver/RubiksSolver/build/CMakeFiles/rebuild_cache.dir
