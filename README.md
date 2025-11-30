@@ -8,6 +8,17 @@ This is a rubik's cube solver using deep first search algoritms in c++.
 g++ -o RubiksSolver RubiksSolver.cpp
 ```
 
+**Important:**  
+If you see an error like  
+```
+error: #error "the coroutine header requires -fcoroutines"
+```
+You need to compile with C++20 and the coroutines flag:
+
+```bash
+g++ -o RubiksSolver RubiksSolver.cpp -std=c++20 -fcoroutines
+```
+
 ## Insight
 
 ```cpp
@@ -35,7 +46,7 @@ Each face is identified by a tag (like -ft for the top face), followed by a stri
 ./RubiksSolver -ft WRBG -ff RYGB -fr GWBY -fbk OYGR -fb BORG -fl WYOB
 ```
 
-This command sets each face of the cube with specified colors in a 2x2 layout. This approach provides a flexible and clear method for initializing the Rubik’s cube from command line arguments, reflecting a specific scrambled state or configuration for testing or demonstration purposes.
+This command sets each face of the cube with specified colors in a 2x2 layout. This approach provides a flexible and clear method for initializing the Rubik’s cube from command line arguments, r[...]
 
 ### Test Case
 ```powershell
