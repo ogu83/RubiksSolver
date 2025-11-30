@@ -1,4 +1,4 @@
-﻿// RubiksSolver.h : Include file for standard system include files,
+// RubiksSolver.h : Include file for standard system include files,
 // or project specific include files.
 
 #pragma once
@@ -14,5 +14,6 @@
 #include <coroutine>
 #include <functional>
 #include <concepts>
+#include <unordered_set>
 
 // TODO: Reference additional headers your program requires here.
