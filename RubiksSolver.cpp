@@ -17,12 +17,9 @@ std::map<std::string, Faces> tagToFace = {
 // Inverse rotation lookup table for move pruning
 const Rotation inverseRotation[] = { UI, DI, RI, LI, FI, BI, U, D, R, L, F, B, ROTATION_NONE };
 
-// Face group lookup - moves on the same face or opposite faces can be optimized
+// Face group lookup - moves on the same axis can commute
 // 0 = U/D axis, 1 = R/L axis, 2 = F/B axis
 const int rotationAxis[] = { 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, 2, 2, -1 };
-
-// Base face for each rotation (without considering inverse)
-const int rotationBaseFace[] = { 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, -1 };
 
 class Cube {
 public:
@@ -160,28 +157,16 @@ public:
 		return misplaced / 8;
 	}
 
-	std::string getStateHash() const {
-		std::string hash;
-		hash.reserve(_cFace * _cRow * _cCol);
-		for (int f = 0; f < _cFace; f++) {
-			for (int i = 0; i < _cRow; i++) {
-				for (int j = 0; j < _cCol; j++) {
-					hash += static_cast<char>('0' + _matrix[f][i][j]);
-				}
-			}
-		}
-		return hash;
-	}
-
+	// Simplified move pruning - only prune obviously redundant moves
 	static bool isRedundantMove(Rotation lastMove, Rotation currentMove) {
 		if (lastMove == ROTATION_NONE) return false;
+		
+		// Don't allow inverse immediately after a move (they cancel out)
 		if (inverseRotation[lastMove] == currentMove) return true;
+		
+		// Don't allow same move twice in a row
 		if (lastMove == currentMove) return true;
-		if (rotationAxis[lastMove] == rotationAxis[currentMove]) {
-			int lastBase = rotationBaseFace[lastMove];
-			int currentBase = rotationBaseFace[currentMove];
-			if (lastBase > currentBase) return true;
-		}
+		
 		return false;
 	}
 
@@ -195,6 +180,7 @@ public:
 		return new Cube(WHITE, _cRow, _cCol, _cFace);
 	}
 
+	// Optimized IDDFS - Iterative Deepening DFS with move pruning
 	virtual void idaStar(const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
 		if (isSolved()) {
 			std::cout << "Already solved!\n";
@@ -205,12 +191,10 @@ public:
 		_solution.clear();
 		_nodesExplored = 0;
 
-		int depthLimit = heuristic();
-		if (depthLimit == 0) depthLimit = 1;
+		int depthLimit = 1;
 
-		while (!_solutionFound && depthLimit <= 20) {
+		while (!_solutionFound && depthLimit <= 14) {
 			std::cout << "Searching depth " << depthLimit << "...\n";
-			_visitedStates.clear();
 			
 			std::vector<Rotation> path;
 			idaStarRecursive(0, depthLimit, ROTATION_NONE, path, begin_time);
@@ -281,7 +265,6 @@ protected:
 
 	bool _solutionFound = false;
 	std::vector<Rotation> _solution;
-	std::unordered_set<std::string> _visitedStates;
 	size_t _nodesExplored = 0;
 
 	virtual void applyRotationInternal(Rotation r) { }
@@ -298,31 +281,29 @@ protected:
 			return true;
 		}
 
-		int h = heuristic();
-		if (currentDepth + h > depthLimit) {
+		// Depth limit reached
+		if (currentDepth >= depthLimit) {
 			return false;
 		}
-
-		std::string stateHash = getStateHash();
-		if (_visitedStates.find(stateHash) != _visitedStates.end()) {
-			return false;
-		}
-		_visitedStates.insert(stateHash);
 
 		static const std::vector<Rotation> allRotations = { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI };
 		
 		for (Rotation r : allRotations) {
+			// Prune redundant moves
 			if (isRedundantMove(lastMove, r)) {
 				continue;
 			}
 
+			// Apply move
 			applyRotation(r);
 			path.push_back(r);
 
+			// Recurse
 			if (idaStarRecursive(currentDepth + 1, depthLimit, r, path, begin_time)) {
 				return true;
 			}
 
+			// Undo move (backtrack)
 			undoRotation(r);
 			path.pop_back();
 		}
