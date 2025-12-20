@@ -125,5 +125,31 @@ YELLOW GREEN
 RED GREEN
 ```
 
+## Testing
+
+Unit tests are available to ensure code quality and catch regressions during optimization.
+
+### Run Tests
+```bash
+g++ -o RubiksSolverTests RubiksSolverTests.cpp -std=c++20 -fcoroutines
+./RubiksSolverTests
+```
+
+**Test Coverage**: 39 tests covering:
+- Rotation mechanics (all 12 moves)
+- Known solution verification (including the example above)
+- Performance regression tests
+- State management
+
+See [TESTING.md](TESTING.md) for detailed testing guide.
+
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and design
+- [IMPLEMENTATION.md](IMPLEMENTATION.md) - Implementation details and algorithms
+- [APPROACH_SOLUTIONS.md](APPROACH_SOLUTIONS.md) - Algorithm analysis and comparisons
+- [ROADMAP.md](ROADMAP.md) - Development roadmap and future features
+- [TESTING.md](TESTING.md) - Testing guide and how to run tests
+
 ## Cube 3x3x3
-Comming soon
+Coming soon

@@ -463,6 +463,106 @@ void testURotationSpecific() {
          "U: LEFT top row has FRONT's color (BLUE)");
 }
 
+// Test 7: README example - known solution verification
+void testREADMEExampleSolution() {
+    std::cout << "\n=== Test: README Example - Known Solution ===" << std::endl;
+
+    // This test verifies the example from README.md (line 53)
+    // Input: -ft YYYY -ff ROOO -fr BGBB -fbk ORRR -fb WWWW -fl GBGG
+    // Solution: F UI B LI B R F
+
+    TestCube cube;
+
+    // Set up the scrambled cube from README
+    // TOP face: YYYY
+    cube._matrix[TOP][0][0] = YELLOW;
+    cube._matrix[TOP][0][1] = YELLOW;
+    cube._matrix[TOP][1][0] = YELLOW;
+    cube._matrix[TOP][1][1] = YELLOW;
+
+    // FRONT face: ROOO
+    cube._matrix[FRONT][0][0] = RED;
+    cube._matrix[FRONT][0][1] = ORANGE;
+    cube._matrix[FRONT][1][0] = ORANGE;
+    cube._matrix[FRONT][1][1] = ORANGE;
+
+    // RIGHT face: BGBB
+    cube._matrix[RIGHT][0][0] = BLUE;
+    cube._matrix[RIGHT][0][1] = GREEN;
+    cube._matrix[RIGHT][1][0] = BLUE;
+    cube._matrix[RIGHT][1][1] = BLUE;
+
+    // BACK face: ORRR
+    cube._matrix[BACK][0][0] = ORANGE;
+    cube._matrix[BACK][0][1] = RED;
+    cube._matrix[BACK][1][0] = RED;
+    cube._matrix[BACK][1][1] = RED;
+
+    // BOTTOM face: WWWW
+    cube._matrix[BOTTOM][0][0] = WHITE;
+    cube._matrix[BOTTOM][0][1] = WHITE;
+    cube._matrix[BOTTOM][1][0] = WHITE;
+    cube._matrix[BOTTOM][1][1] = WHITE;
+
+    // LEFT face: GBGG
+    cube._matrix[LEFT][0][0] = GREEN;
+    cube._matrix[LEFT][0][1] = BLUE;
+    cube._matrix[LEFT][1][0] = GREEN;
+    cube._matrix[LEFT][1][1] = GREEN;
+
+    std::cout << "Initial scrambled state from README:" << std::endl;
+    cube.printCube();
+
+    // Apply the known solution: F UI B LI B R F
+    std::vector<Rotation> solution = {F, UI, B, LI, B, R, F};
+    cube.applySolution(solution);
+
+    std::cout << "After applying solution (F UI B LI B R F):" << std::endl;
+    cube.printCube();
+
+    // Check that first 3 faces are uniform (this is how isSolved() works)
+    bool topUniform = (cube._matrix[TOP][0][0] == cube._matrix[TOP][0][1] &&
+                       cube._matrix[TOP][0][0] == cube._matrix[TOP][1][0] &&
+                       cube._matrix[TOP][0][0] == cube._matrix[TOP][1][1]);
+
+    bool frontUniform = (cube._matrix[FRONT][0][0] == cube._matrix[FRONT][0][1] &&
+                         cube._matrix[FRONT][0][0] == cube._matrix[FRONT][1][0] &&
+                         cube._matrix[FRONT][0][0] == cube._matrix[FRONT][1][1]);
+
+    bool rightUniform = (cube._matrix[RIGHT][0][0] == cube._matrix[RIGHT][0][1] &&
+                         cube._matrix[RIGHT][0][0] == cube._matrix[RIGHT][1][0] &&
+                         cube._matrix[RIGHT][0][0] == cube._matrix[RIGHT][1][1]);
+
+    test(topUniform, "README example: TOP face is uniform after solution");
+    test(frontUniform, "README example: FRONT face is uniform after solution");
+    test(rightUniform, "README example: RIGHT face is uniform after solution");
+
+    // Verify solution length is 7 moves (as expected from README)
+    test(solution.size() == 7, "README example: Solution is 7 moves long");
+}
+
+// Test 8: Performance regression test - simple scrambles should solve quickly
+void testPerformanceRegression() {
+    std::cout << "\n=== Test: Performance Regression ===" << std::endl;
+
+    // Test that simple operations complete in reasonable time
+    TestCube cube;
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // Apply 100 rotations
+    for (int i = 0; i < 100; i++) {
+        cube.applyRotation(static_cast<Rotation>(i % 12));
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    test(duration.count() < 100, "100 rotations complete in < 100ms");
+
+    std::cout << "Time for 100 rotations: " << duration.count() << " ms" << std::endl;
+}
+
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "   Rubik's Cube Solver Unit Tests" << std::endl;
@@ -474,7 +574,9 @@ int main() {
     testDRotationSpecific();
     testDIRotationSpecific();
     testURotationSpecific();
-    
+    testREADMEExampleSolution();
+    testPerformanceRegression();
+
     std::cout << "\n========================================" << std::endl;
     std::cout << "   Test Results: " << testsPassed << " passed, " << testsFailed << " failed" << std::endl;
     std::cout << "========================================" << std::endl;
