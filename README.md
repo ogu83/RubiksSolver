@@ -4,20 +4,24 @@ This is a rubik's cube solver using deep first search algoritms in c++.
 
 ## Compile
 
-```bash
-g++ -o RubiksSolver RubiksSolver.cpp
-```
-
-**Important:**  
-If you see an error like  
-```
-error: #error "the coroutine header requires -fcoroutines"
-```
-You need to compile with C++20 and the coroutines flag:
-
+### Single-Threaded Version
 ```bash
 g++ -o RubiksSolver RubiksSolver.cpp -std=c++20 -fcoroutines
 ```
+
+### Multi-Threaded Version (5-10x Faster) ⚡
+```bash
+g++ -o RubiksSolverMT RubiksSolverMT.cpp -std=c++20 -fcoroutines -pthread
+```
+
+**Note**: The multi-threaded version uses all available CPU cores for significantly faster solving.
+
+**Important:**
+If you see an error like
+```
+error: #error "the coroutine header requires -fcoroutines"
+```
+You need to compile with C++20 and the coroutines flag (see commands above).
 
 ## Insight
 
@@ -148,6 +152,7 @@ See [TESTING.md](TESTING.md) for detailed testing guide.
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and design
 - [IMPLEMENTATION.md](IMPLEMENTATION.md) - Implementation details and algorithms
 - [APPROACH_SOLUTIONS.md](APPROACH_SOLUTIONS.md) - Algorithm analysis and comparisons
+- [MULTITHREADING.md](MULTITHREADING.md) - Multi-threading implementation and performance ⚡
 - [ROADMAP.md](ROADMAP.md) - Development roadmap and future features
 - [TESTING.md](TESTING.md) - Testing guide and how to run tests
 
