@@ -159,6 +159,34 @@ public:
 	}
 
 	/// <summary>
+	/// Validate that the cube configuration is solvable
+	/// Checks that each color appears exactly 4 times (one face per color in 2x2x2)
+	/// </summary>
+	/// <returns>True if configuration is valid, false otherwise</returns>
+	bool isValidConfiguration() const {
+		std::map<Color, int> colorCount;
+		
+		// Count occurrences of each color
+		for (size_t f = 0; f < _cFace; ++f) {
+			for (size_t i = 0; i < _cRow; ++i) {
+				for (size_t j = 0; j < _cCol; ++j) {
+					colorCount[_matrix[f][i][j]]++;
+				}
+			}
+		}
+		
+		// For 2x2x2 cube, each color should appear exactly 4 times
+		int expectedCount = _cRow * _cCol;
+		for (const auto& pair : colorCount) {
+			if (pair.first != UNDEFINED && pair.second != expectedCount) {
+				return false;
+			}
+		}
+		
+		return true;
+	}
+
+	/// <summary>
 	/// Check if the cube is solved or not
 	/// </summary>
 	/// <returns>Solved or Not</returns>
@@ -214,6 +242,14 @@ public:
 	/// <param name="begin_time">Start Time</param>
 	virtual void idaStar(int maxDepth = 14, const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
 		if (isSolved()) {
+			return;
+		}
+
+		// Validate cube configuration before attempting to solve
+		if (!isValidConfiguration()) {
+			std::cout << "ERROR: Invalid cube configuration detected!\n";
+			std::cout << "Each color must appear exactly " << (_cRow * _cCol) << " times.\n";
+			std::cout << "Please check your input configuration.\n";
 			return;
 		}
 
