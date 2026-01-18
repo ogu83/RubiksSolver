@@ -159,12 +159,13 @@ public:
 	}
 
 	/// <summary>
-	/// Check if tich cube is solved or not
+	/// Check if the cube is solved or not
 	/// </summary>
 	/// <returns>Solved or Not</returns>
 	inline bool isSolved() const {
-		for (size_t f = 0; f < _cFace/2; ++f) {
-			auto face = _matrix[f];
+		// Check all 6 faces (not just 3)
+		for (size_t f = 0; f < _cFace; ++f) {
+			const auto& face = _matrix[f];
 			const Color referenceColor = face[0][0];
 			for (size_t i = 0; i < _cCol; ++i) {
 				for (size_t j = 0; j < _cRow; ++j) {
