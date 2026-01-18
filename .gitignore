@@ -371,6 +371,12 @@ _codeql_detected_source_root
 
 #executables
 *.exe
+RubiksSolver
+RubiksSolverTests
+
+# Test files
+test_*.cpp
+test_*
 
 #Setting files
 *.local.json
