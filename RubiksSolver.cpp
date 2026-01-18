@@ -229,8 +229,12 @@ public:
 			long long nodesAtDepth = 0;
 			std::vector<Rotation> currentPath;
 			
+			// Create search state
+			SearchState state(0, depthLimit, NONE, currentPath, nodesAtDepth, 
+			                 foundSolution, solutionPath);
+			
 			// Run depth-limited search with move pruning
-			if (idaStarRecursive(0, depthLimit, NONE, currentPath, nodesAtDepth, foundSolution, solutionPath)) {
+			if (idaStarRecursive(state)) {
 				// Solution found!
 				auto endTime = std::chrono::steady_clock::now();
 				std::chrono::duration<double> timeTaken = endTime - begin_time;
@@ -269,30 +273,40 @@ public:
 	}
 
 	/// <summary>
+	/// Search state for IDA* algorithm
+	/// </summary>
+	struct SearchState {
+		int currentDepth;
+		int depthLimit;
+		Faces lastMove;
+		std::vector<Rotation>& path;
+		long long& nodesExplored;
+		bool& foundSolution;
+		std::vector<Rotation>& solutionPath;
+		
+		SearchState(int cd, int dl, Faces lm, std::vector<Rotation>& p, 
+		           long long& ne, bool& fs, std::vector<Rotation>& sp)
+			: currentDepth(cd), depthLimit(dl), lastMove(lm), path(p),
+			  nodesExplored(ne), foundSolution(fs), solutionPath(sp) {}
+	};
+
+	/// <summary>
 	/// Recursive IDA* search with pruning and backtracking
 	/// </summary>
-	/// <param name="currentDepth">Current depth in search tree</param>
-	/// <param name="depthLimit">Maximum depth for this iteration</param>
-	/// <param name="lastMove">Last move applied (for pruning)</param>
-	/// <param name="path">Current solution path</param>
-	/// <param name="nodesExplored">Counter for nodes visited</param>
-	/// <param name="foundSolution">Flag to stop search when solution found</param>
-	/// <param name="solutionPath">Output: the solution when found</param>
+	/// <param name="state">Search state containing all search parameters</param>
 	/// <returns>True if solution found</returns>
-	bool idaStarRecursive(int currentDepth, int depthLimit, Faces lastMove, 
-	                      std::vector<Rotation>& path, long long& nodesExplored,
-	                      bool& foundSolution, std::vector<Rotation>& solutionPath) {
-		nodesExplored++;
+	bool idaStarRecursive(SearchState& state) {
+		state.nodesExplored++;
 		
 		// Check if solved (base case)
 		if (isSolved()) {
-			foundSolution = true;
-			solutionPath = path;
+			state.foundSolution = true;
+			state.solutionPath = state.path;
 			return true;
 		}
 		
 		// Depth limit reached (base case)
-		if (currentDepth >= depthLimit) {
+		if (state.currentDepth >= state.depthLimit) {
 			return false;
 		}
 		
@@ -301,7 +315,7 @@ public:
 		int h = heuristic();
 		
 		// Pruning: if current depth + heuristic > limit, this path can't succeed
-		if (currentDepth + h > depthLimit) {
+		if (state.currentDepth + h > state.depthLimit) {
 			return false;
 		}
 		
@@ -310,27 +324,30 @@ public:
 		
 		for (Rotation move : allRotations) {
 			// Move pruning: skip redundant moves
-			if (isRedundantMove(lastMove, move)) {
+			if (isRedundantMove(state.lastMove, move)) {
 				continue;
 			}
 			
 			// Apply move
 			applyRotation(move);
-			path.push_back(move);
+			state.path.push_back(move);
 			
 			// Recurse with updated state
 			Faces moveFace = getMoveFace(move);
-			if (idaStarRecursive(currentDepth + 1, depthLimit, moveFace, path, 
-			                     nodesExplored, foundSolution, solutionPath)) {
+			SearchState nextState(state.currentDepth + 1, state.depthLimit, moveFace,
+			                     state.path, state.nodesExplored, state.foundSolution, 
+			                     state.solutionPath);
+			
+			if (idaStarRecursive(nextState)) {
 				return true; // Solution found in this subtree
 			}
 			
 			// Backtrack: undo move by applying inverse
-			path.pop_back();
+			state.path.pop_back();
 			applyRotation(getInverseRotation(move));
 			
 			// Early termination if solution found in another branch
-			if (foundSolution) {
+			if (state.foundSolution) {
 				return false;
 			}
 		}
