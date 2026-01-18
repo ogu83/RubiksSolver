@@ -120,7 +120,9 @@ public:
 	/// </summary>
 	/// <param name="r">Rotation</param>
 	virtual void applyRotation(Rotation r) {
-		_rotations.push_back(r);
+		if (_trackRotations) {
+			_rotations.push_back(r);
+		}
 	}
 
 	/// <summary>
@@ -194,51 +196,261 @@ public:
 	}
 
 	/// <summary>
-	/// Depth First Search For Solve The Cube
+	/// Depth First Search For Solve The Cube (Legacy - kept for compatibility)
 	/// </summary>
-	/// <param name="depth">Depth</param>
+	/// <param name="maxDepth">Maximum search depth</param>
 	/// <param name="begin_time">Start Time</param>
-	virtual void dfs(int depth = 1, const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
+	virtual void dfs(int maxDepth = 14, const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
+		// Use optimized IDA* algorithm instead
+		idaStar(maxDepth, begin_time);
+	}
+
+	/// <summary>
+	/// IDA* (Iterative Deepening A*) - Optimized search algorithm
+	/// Combines depth-first search with heuristic guidance and move pruning
+	/// </summary>
+	/// <param name="maxDepth">Maximum search depth</param>
+	/// <param name="begin_time">Start Time</param>
+	virtual void idaStar(int maxDepth = 14, const std::chrono::time_point<std::chrono::steady_clock>& begin_time = std::chrono::steady_clock::now()) {
 		if (isSolved()) {
 			return;
 		}
 
-		static const std::vector<Rotation> allRotations = { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI };
-		std::vector<Rotation> currentPath;
-		std::vector<std::vector<Rotation>> potentialSolutions;
+		// Statistics for performance tracking
+		long long nodesExplored = 0;
+		std::vector<Rotation> solutionPath;
+		bool foundSolution = false;
 
-		// Generate all combinations of moves up to the given depth
-		generateCombinations(allRotations, depth, currentPath, potentialSolutions);
-		std::cout << potentialSolutions.size() << " combinations testing.\n";
+		// Disable rotation tracking during search
+		_trackRotations = false;
 
-		auto endTime = std::chrono::steady_clock::now();
-		std::chrono::duration<double> timeTaken = endTime - begin_time;
-		//int printIndex = 0;
-
-		for (const auto& solution : potentialSolutions) {
-			//std::cout << "Testing: ";
-			//for (Rotation move : solution) {
-			//	std::cout << rotationToString(move) << " ";
-			//}
-			//std::cout << "\n";
-
-			//testCube->printCube(true);
-			applySolution(solution);
-			if (isSolved()) {
+		// Iterative deepening: try depths 1, 2, 3, ... until solution found
+		for (int depthLimit = 1; depthLimit <= maxDepth && !foundSolution; ++depthLimit) {
+			long long nodesAtDepth = 0;
+			std::vector<Rotation> currentPath;
+			
+			// Run depth-limited search with move pruning
+			if (idaStarRecursive(0, depthLimit, NONE, currentPath, nodesAtDepth, foundSolution, solutionPath)) {
+				// Solution found!
+				auto endTime = std::chrono::steady_clock::now();
+				std::chrono::duration<double> timeTaken = endTime - begin_time;
+				
 				std::cout << "Solved in " << timeTaken.count() << " seconds.\n";
 				std::cout << "Solution: ";
-				for (Rotation move : solution) {
+				for (Rotation move : solutionPath) {
 					std::cout << rotationToString(move) << " ";
 				}
 				std::cout << "\n";
+				std::cout << "Total nodes explored: " << (nodesExplored + nodesAtDepth) << "\n";
+				
+				// Cube is already in solved state, just update rotation history
+				_trackRotations = true;
+				_rotations = solutionPath;
 				return;
 			}
-			reset();
+			
+			nodesExplored += nodesAtDepth;
+			std::cout << nodesAtDepth << " nodes explored at depth " << depthLimit << ".\n";
+			
+			auto currentTime = std::chrono::steady_clock::now();
+			std::chrono::duration<double> elapsed = currentTime - begin_time;
+			
+			if (depthLimit < maxDepth) {
+				std::cout << elapsed.count() << " seconds elapsed.\nIncreasing depth to " << (depthLimit + 1) << ". Continue search...\n";
+			}
 		}
-
-		std::cout << timeTaken.count() << " seconds elapsed.\nIncreasing depth to " << depth + 1 << ". Continue search...\n";
-		dfs(depth + 1, begin_time);
+		
+		// Re-enable rotation tracking
+		_trackRotations = true;
+		
+		if (!foundSolution) {
+			std::cout << "No solution found within depth limit of " << maxDepth << ".\n";
+		}
 	}
+
+	/// <summary>
+	/// Recursive IDA* search with pruning and backtracking
+	/// </summary>
+	/// <param name="currentDepth">Current depth in search tree</param>
+	/// <param name="depthLimit">Maximum depth for this iteration</param>
+	/// <param name="lastMove">Last move applied (for pruning)</param>
+	/// <param name="path">Current solution path</param>
+	/// <param name="nodesExplored">Counter for nodes visited</param>
+	/// <param name="foundSolution">Flag to stop search when solution found</param>
+	/// <param name="solutionPath">Output: the solution when found</param>
+	/// <returns>True if solution found</returns>
+	bool idaStarRecursive(int currentDepth, int depthLimit, Faces lastMove, 
+	                      std::vector<Rotation>& path, long long& nodesExplored,
+	                      bool& foundSolution, std::vector<Rotation>& solutionPath) {
+		nodesExplored++;
+		
+		// Check if solved (base case)
+		if (isSolved()) {
+			foundSolution = true;
+			solutionPath = path;
+			return true;
+		}
+		
+		// Depth limit reached (base case)
+		if (currentDepth >= depthLimit) {
+			return false;
+		}
+		
+		// Calculate heuristic estimate (number of misplaced pieces / 4)
+		// This provides admissible heuristic for A*
+		int h = heuristic();
+		
+		// Pruning: if current depth + heuristic > limit, this path can't succeed
+		if (currentDepth + h > depthLimit) {
+			return false;
+		}
+		
+		// Try all possible moves with intelligent ordering
+		static const std::vector<Rotation> allRotations = { U, D, R, L, F, B, UI, DI, RI, LI, FI, BI };
+		
+		for (Rotation move : allRotations) {
+			// Move pruning: skip redundant moves
+			if (isRedundantMove(lastMove, move)) {
+				continue;
+			}
+			
+			// Apply move
+			applyRotation(move);
+			path.push_back(move);
+			
+			// Recurse with updated state
+			Faces moveFace = getMoveFace(move);
+			if (idaStarRecursive(currentDepth + 1, depthLimit, moveFace, path, 
+			                     nodesExplored, foundSolution, solutionPath)) {
+				return true; // Solution found in this subtree
+			}
+			
+			// Backtrack: undo move by applying inverse
+			path.pop_back();
+			applyRotation(getInverseRotation(move));
+			
+			// Early termination if solution found in another branch
+			if (foundSolution) {
+				return false;
+			}
+		}
+		
+		return false;
+	}
+
+	/// <summary>
+	/// Heuristic function: estimates minimum moves to solve
+	/// Returns number of misplaced pieces divided by 4 (admissible underestimate)
+	/// </summary>
+	/// <returns>Heuristic value</returns>
+	inline int heuristic() const {
+		int misplacedCount = 0;
+		
+		// Count misplaced cells on each face
+		for (size_t f = 0; f < _cFace; ++f) {
+			const auto& face = _matrix[f];
+			const Color referenceColor = face[0][0];
+			
+			for (size_t i = 0; i < _cRow; ++i) {
+				for (size_t j = 0; j < _cCol; ++j) {
+					if (face[i][j] != referenceColor) {
+						misplacedCount++;
+					}
+				}
+			}
+		}
+		
+		// Divide by 4 to get admissible heuristic
+		// (each move affects at least 4 cells)
+		return (misplacedCount + 3) / 4;
+	}
+
+	/// <summary>
+	/// Check if a move is redundant given the previous move
+	/// Prunes: inverse moves, duplicate moves, and some commutative moves
+	/// </summary>
+	/// <param name="lastFace">Face of last move</param>
+	/// <param name="currentMove">Move being considered</param>
+	/// <returns>True if move should be skipped</returns>
+	inline bool isRedundantMove(Faces lastFace, Rotation currentMove) const {
+		if (lastFace == NONE) {
+			return false; // First move, no pruning
+		}
+		
+		Faces currentFace = getMoveFace(currentMove);
+		
+		// Don't move same face twice in a row (reduces branching)
+		if (currentFace == lastFace) {
+			return true;
+		}
+		
+		// Don't alternate between opposite faces in certain orders
+		// This reduces redundant sequences like U D U D...
+		if (areOppositeFaces(lastFace, currentFace) && lastFace > currentFace) {
+			return true;
+		}
+		
+		return false;
+	}
+
+	/// <summary>
+	/// Get the face that a rotation operates on
+	/// </summary>
+	inline Faces getMoveFace(Rotation move) const {
+		switch (move) {
+			case U:
+			case UI:
+				return TOP;
+			case D:
+			case DI:
+				return BOTTOM;
+			case R:
+			case RI:
+				return RIGHT;
+			case L:
+			case LI:
+				return LEFT;
+			case F:
+			case FI:
+				return FRONT;
+			case B:
+			case BI:
+				return BACK;
+			default:
+				return NONE;
+		}
+	}
+
+	/// <summary>
+	/// Get the inverse of a rotation
+	/// </summary>
+	inline Rotation getInverseRotation(Rotation move) const {
+		switch (move) {
+			case U: return UI;
+			case UI: return U;
+			case D: return DI;
+			case DI: return D;
+			case R: return RI;
+			case RI: return R;
+			case L: return LI;
+			case LI: return L;
+			case F: return FI;
+			case FI: return F;
+			case B: return BI;
+			case BI: return B;
+			default: return move;
+		}
+	}
+
+	/// <summary>
+	/// Check if two faces are opposite (parallel)
+	/// </summary>
+	inline bool areOppositeFaces(Faces f1, Faces f2) const {
+		return (f1 == TOP && f2 == BOTTOM) || (f1 == BOTTOM && f2 == TOP) ||
+		       (f1 == FRONT && f2 == BACK) || (f1 == BACK && f2 == FRONT) ||
+		       (f1 == LEFT && f2 == RIGHT) || (f1 == RIGHT && f2 == LEFT);
+	}
+
 
 protected:
 
@@ -249,6 +461,7 @@ protected:
 	std::vector<std::vector<std::vector<Color>>> _matrix;
 	std::vector<std::vector<std::vector<Color>>> _initMatrix;
 	std::vector<Rotation> _rotations;
+	bool _trackRotations = true; // Flag to control rotation tracking
 
 	/// <summary>
 	/// Rotate One face of the Cube
