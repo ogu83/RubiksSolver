@@ -8,7 +8,79 @@ This document details the bugs found and fixed in the IDA* with heuristic implem
 
 ## Bugs Fixed
 
-### 1. **CRITICAL: Inadmissible Heuristic** ✅ FIXED
+### 1. **CRITICAL: isSolved() Checks Wrong Goal State** ✅ FIXED
+
+**Files Affected**:
+- [Cube.cpp:88-106](Cube.cpp#L88-L106) (isSolved implementation)
+- [RubiksSolverOptimized.cpp:28-48](RubiksSolverOptimized.cpp#L28-L48) (heuristic)
+- [RubiksSolverOptMT.cpp:29-49](RubiksSolverOptMT.cpp#L29-L49) (heuristic)
+
+**Problem**:
+The `isSolved()` method was checking if faces are **uniform** (all one color) instead of checking if they match the **standard solved state**:
+
+```cpp
+// OLD (WRONG): Checks if each face is uniform
+bool Cube::isSolved() const {
+    for (size_t f = 0; f < _cFace / 2; ++f) {
+        const auto& face = _matrix[f];
+        const Color referenceColor = face[0][0];  // Uses corner piece as reference!
+        for (size_t i = 0; i < _cCol; ++i) {
+            for (size_t j = 0; j < _cRow; ++j) {
+                if (face[i][j] != referenceColor) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+```
+
+This would return `true` for ANY cube state where the first 3 faces are uniform, even if they have the wrong colors! For example:
+- TOP = all GREEN, FRONT = all ORANGE, RIGHT = all BLUE would pass as "solved" ❌
+
+**Impact**:
+- Algorithm would find paths to ANY uniform state, not the correct solved state
+- Found "solutions" didn't actually solve the cube
+- Example: Simple `-ff YRYB` scramble found 7-move "solution" that left cube unsolved
+- Heuristic was also using wrong reference (corner piece instead of target colors)
+
+**Fix**:
+Changed to check against the standard solved state colors:
+
+```cpp
+// NEW (CORRECT): Checks against target solved state
+bool Cube::isSolved() const {
+    const Color solvedColors[6] = { YELLOW, BLUE, RED, WHITE, GREEN, ORANGE };
+    // Order is: TOP, FRONT, RIGHT, BOTTOM, BACK, LEFT
+
+    for (size_t f = 0; f < _cFace / 2; ++f) {
+        const Color targetColor = solvedColors[f];  // Uses TARGET color!
+        const auto& face = _matrix[f];
+        for (size_t i = 0; i < _cCol; ++i) {
+            for (size_t j = 0; j < _cRow; ++j) {
+                if (face[i][j] != targetColor) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+```
+
+Also updated heuristic functions to count misplaced pieces relative to target colors:
+```cpp
+const Color solvedColors[6] = { YELLOW, BLUE, RED, WHITE, GREEN, ORANGE };
+const Color targetColor = solvedColors[f];  // Count against target, not corner!
+```
+
+**Result**:
+- Algorithm now correctly searches for the standard solved state (TOP=YELLOW, FRONT=BLUE, RIGHT=RED)
+- Found solutions actually solve the cube ✅
+- Heuristic accurately estimates distance to the correct goal state
+
+### 2. **CRITICAL: Inadmissible Heuristic** ✅ FIXED
 
 **Files Affected**:
 - [RubiksSolverOptimized.cpp:148](RubiksSolverOptimized.cpp#L148)
